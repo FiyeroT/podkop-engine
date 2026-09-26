@@ -1,0 +1,18 @@
+# Вариант стенда, где dest — nginx 1.22 + OpenSSL 3.0 из Debian 12, как на doqz (без X25519MLKEM768).
+# Бинари sing-box из пакетов OpenWrt динамически слинкованы с musl и libgcc_s: берём их из
+# alpine (та же musl 1.2.5, что в OpenWrt; у Debian 12 — 1.2.3).
+FROM alpine:3.22 AS musl
+RUN apk add --no-cache libgcc
+
+FROM debian:bookworm-slim
+COPY --from=musl /lib/ld-musl-x86_64.so.1 /lib/ld-musl-x86_64.so.1
+COPY --from=musl /usr/lib/libgcc_s.so.1 /usr/local/lib/libgcc_s.so.1
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends nginx openssl curl jq net-tools ca-certificates >/dev/null \
+ && rm -rf /var/lib/apt/lists/* && mkdir -p /etc/nginx/tls /run/nginx \
+ && openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 3650 \
+      -subj "/CN=reality.test" -addext "subjectAltName=DNS:reality.test" \
+      -keyout /etc/nginx/tls/key.pem -out /etc/nginx/tls/cert.pem 2>/dev/null
+COPY nginx-bookworm.conf /etc/nginx/nginx.conf
+COPY run-matrix.sh /lab/run-matrix.sh
+WORKDIR /lab
+ENTRYPOINT ["/lab/run-matrix.sh"]

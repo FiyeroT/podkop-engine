@@ -1,0 +1,46 @@
+# Выпуск (пока вручную)
+
+## Когда
+
+- вышел новый тег в одной из веток sing-box (1.12.x, 1.13.x, 1.14.x) или новая ветка;
+- вышел Xray-core, меняющий REALITY (как 26.9.8) — прогнать стенд, даже если sing-box не менялся;
+- изменились наши патчи.
+
+## Шаги
+
+1. **Перенести патчи на новый тег** (в клоне SagerNet/sing-box):
+   ```sh
+   git checkout -b pe-1.14 v1.14.3
+   git am -3 /path/podkop-engine/patches/v1.14/*.patch     # конфликты — поправить, git am --continue
+   git format-patch v1.14.3 -o /path/podkop-engine/patches/v1.14/   # заменить старые файлы
+   ```
+   Для 0003 проверить, не появились ли в `include/registry.go` новые безусловные тяжёлые
+   регистрации и что `cmd/sing-box/cmd_api*.go` по-прежнему исчерпывают CLI `api`.
+   Новая ветка (например 1.15): каталог `patches/v1.15`, строка в `LINES`.
+
+2. **versions.env**: `SB_<ветка>_VERSION`, `SB_<ветка>_HASH`
+   (`curl -sL https://codeload.github.com/SagerNet/sing-box/tar.gz/v<версия> | sha256sum`),
+   `SB_<ветка>_RELEASE=1` для новой версии upstream или +1, если менялись только патчи.
+   Если upstream поднял требуемый Go выше закреплённого — обновить `GOLANG_FEED_COMMIT`
+   (последний коммит `lang/golang` в нужной ветке openwrt/packages).
+
+3. **Проверить локально x86_64** (быстро, до CI):
+   ```sh
+   docker run --rm -v "$PWD:/src:ro" -v "$PWD/out:/out" openwrt/sdk:x86-64-v24.10.8 sh /src/scripts/sdk-build.sh 1.14
+   docker run --rm -v "$PWD/out:/pkgs:ro" -v "$PWD/lab/podkop-check:/t:ro" -v "$PWD/lab:/lab:ro" openwrt/rootfs:x86-64-24.10.8 sh /lab/pkg-test.sh
+   lab/fetch-bins.sh out lab/bin && lab/gate.sh lab/bin
+   ```
+   Свежий Xray для стенда: `XRAY_EXTRA="26.10.1" lab/fetch-bins.sh ...`.
+
+4. **CI**: Actions → build → Run workflow (ветки, формат, `release` = true). Workflow собирает все
+   pkgarch, ставит x86_64-пакеты в OpenWrt 24.10 / 25.12 / snapshot вместе с podkop, прогоняет
+   стенд и создаёт **черновик** релиза с пакетами и `SHA256SUMS`.
+
+5. Просмотреть черновик (размеры, список архитектур, лог стенда `lab-results`) и опубликовать.
+
+## Если стенд показал MISMATCH
+
+- новый Xray отвергает клиента (`authentication failed or validation criteria not met` при `show`)
+  — смотреть изменения в XTLS/REALITY между версиями (так нашлась причина 26.9.8);
+- проверить, ведёт ли себя так же эталонный Xray-клиент той же версии (`xrayc-<версия>` в стенде):
+  цель — вести себя как он.

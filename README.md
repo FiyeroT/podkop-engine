@@ -69,4 +69,4 @@ docker run --rm -v "$PWD/out:/pkgs:ro" -v "$PWD/lab/podkop-check:/t:ro" -v "$PWD
 lab/fetch-bins.sh out lab/bin && lab/gate.sh lab/bin
 ```
 
-Выпуск новой версии — `docs/RELEASE.md`.
+Выпуск новой версии — `docs/RELEASE.md`, установка на роутер вручную — `docs/INSTALL.md`.

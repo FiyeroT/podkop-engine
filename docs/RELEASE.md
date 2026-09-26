@@ -8,7 +8,9 @@
 
 ## Шаги
 
-1. **Перенести патчи на новый тег** (в клоне SagerNet/sing-box):
+1. **Перенести патчи на новый тег** (в клоне SagerNet/sing-box). Учётка git в клоне и здесь —
+   `FiyeroT <me@fiyero.xyz>` (`git config user.name FiyeroT; git config user.email me@fiyero.xyz`):
+   она попадает в `From:` патчей и в коммиты.
    ```sh
    git checkout -b pe-1.14 v1.14.3
    git am -3 /path/podkop-engine/patches/v1.14/*.patch     # конфликты — поправить, git am --continue

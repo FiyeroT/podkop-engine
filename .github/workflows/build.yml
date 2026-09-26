@@ -107,7 +107,7 @@ jobs:
 
   release:
     needs: [build, test]
-    if: ${{ inputs.release && !cancelled() && needs.test.result == 'success' }}
+    if: ${{ inputs.release && !cancelled() && needs.build.result == 'success' && needs.test.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -120,7 +120,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir dist && find art -type f \( -name '*.ipk' -o -name '*.apk' \) -exec cp {} dist/ \;
-          (cd dist && sha256sum * > SHA256SUMS)
+          (cd dist && sha256sum -- * > SHA256SUMS)
           . ./versions.env
           tag="pe-$(date -u +%Y%m%d)-${{ github.run_number }}"
           notes="sing-box: $SB_1_12_VERSION-r$SB_1_12_RELEASE, $SB_1_13_VERSION-r$SB_1_13_RELEASE, $SB_1_14_VERSION-r$SB_1_14_RELEASE"

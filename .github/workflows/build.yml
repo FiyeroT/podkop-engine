@@ -29,7 +29,7 @@ jobs:
     outputs:
       matrix: ${{ steps.gen.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: gen
         run: |
           python3 scripts/gen-matrix.py --format "${{ inputs.format }}" ${{ inputs.only && format('--only {0}', inputs.only) || '' }} > matrix.json
@@ -46,9 +46,9 @@ jobs:
       matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
     name: ${{ matrix.format }} ${{ matrix.pkgarch }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Cache downloads (sing-box sources, Go modules)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: dl
           key: dl-${{ hashFiles('versions.env') }}
@@ -58,7 +58,7 @@ jobs:
           mkdir -p out dl && chmod 777 out dl
           docker run --rm -v "$PWD:/src:ro" -v "$PWD/out:/out" -v "$PWD/dl:/builder/dl" \
             "${{ matrix.image }}" sh /src/scripts/sdk-build.sh ${{ inputs.lines }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ${{ matrix.format }}-${{ matrix.pkgarch }}
@@ -78,8 +78,8 @@ jobs:
           - { format: apk, rootfs: "openwrt/rootfs:x86-64-SNAPSHOT" }
     name: test ${{ matrix.rootfs }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: ${{ matrix.format }}-x86_64
           path: pkgs
@@ -98,7 +98,7 @@ jobs:
         run: |
           lab/fetch-bins.sh pkgs lab/bin
           lab/gate.sh lab/bin 2>&1 | tee lab-results.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always() && matrix.format == 'ipk'
         with:
           name: lab-results
@@ -110,8 +110,8 @@ jobs:
     if: ${{ inputs.release && !cancelled() && needs.build.result == 'success' && needs.test.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           path: art
           pattern: "*-*"

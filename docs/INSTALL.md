@@ -2,7 +2,9 @@
 
 Пакет ставит `/usr/bin/sing-box`, `/etc/init.d/sing-box`, `/etc/config/sing-box` — те же пути,
 что пакет `sing-box` из OpenWrt, поэтому с ним он конфликтует и заменяет его.
-Файл брать под свою архитектуру (`opkg print-architecture` / `apk --print-arch`).
+Файл брать из релиза нужной версии (https://github.com/FiyeroT/podkop-engine/releases) под свою
+архитектуру (`opkg print-architecture` / `apk --print-arch`), например
+`podkop-engine_1.14.2-r1_openwrt_aarch64_cortex-a53.ipk`.
 
 ## OpenWrt 24.10 и старше (opkg, .ipk)
 
@@ -10,7 +12,7 @@
 opkg update
 # если стоит sing-box из репозитория (podkop от него зависит — отсюда --force-depends):
 opkg remove --force-depends sing-box sing-box-tiny 2>/dev/null
-opkg install /tmp/podkop-engine_1.14.2-r1_<pkgarch>.ipk
+opkg install /tmp/podkop-engine_1.14.2-r1_openwrt_<pkgarch>.ipk
 service podkop restart
 ```
 
@@ -21,7 +23,7 @@ service podkop restart
 
 ```sh
 apk update
-apk add --allow-untrusted /tmp/podkop-engine-1.14.2-r1_<pkgarch>.apk
+apk add --allow-untrusted /tmp/podkop-engine_1.14.2-r1_openwrt_<pkgarch>.apk
 service podkop restart
 ```
 

@@ -35,6 +35,9 @@
 - `.ipk` (opkg, OpenWrt 24.10 и старше) — SDK 24.10;
 - `.apk` (apk, OpenWrt 25.12 и snapshot) — SDK 25.12.
 
+Релизы — по одному на ветку (тег `v<версия sing-box>-r<ревизия>`, например `v1.14.2-r1`), файлы
+названы как у sing-box: `podkop-engine_1.14.2-r1_openwrt_<pkgarch>.ipk` / `.apk`, плюс `SHA256SUMS`.
+
 Go во всех сборках один — закреплённый `lang/golang` из openwrt/packages (Go 1.26.x).
 
 ## Устройство

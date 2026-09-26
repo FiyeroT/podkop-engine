@@ -13,7 +13,7 @@ fail() { echo "FAIL: $*"; exit 1; }
 mkdir -p /var/lock /tmp/pk
 
 if command -v apk >/dev/null 2>&1; then
-  pkg=$(ls /pkgs/podkop-engine-*.apk 2>/dev/null | head -1); [ -n "$pkg" ] || fail "no .apk in /pkgs"
+  pkg=$(ls /pkgs/podkop-engine_*.apk 2>/dev/null | head -1); [ -n "$pkg" ] || fail "no .apk in /pkgs"
   apk update -q
   apk add -q --allow-untrusted "$pkg" || fail "apk add podkop-engine"
   wget -q -O /tmp/pk/podkop.apk "$REL/podkop-$PODKOP_VERSION-r1.apk"

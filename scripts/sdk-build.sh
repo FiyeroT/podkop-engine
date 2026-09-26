@@ -6,8 +6,8 @@
 #     openwrt/sdk:<target>-v<release> sh /src/scripts/sdk-build.sh [1.12 1.13 1.14]
 #
 # Без аргументов собирает все ветки из LINES в versions.env.
-# Результат: /out/podkop-engine_<версия>-r<N>_<pkgarch>.ipk (SDK 24.10) или
-# /out/podkop-engine-<версия>-r<N>_<pkgarch>.apk (SDK 25.12+), плюс /out/build-<ветка>.log.
+# Результат: /out/podkop-engine_<версия>-r<N>_openwrt_<pkgarch>.ipk (SDK 24.10) или .apk
+# (SDK 25.12+), плюс /out/build-<ветка>.log.
 set -eu
 SRC=${SRC:-/src}
 OUT=${OUT:-/out}
@@ -69,12 +69,10 @@ EOF
   make defconfig >/dev/null 2>&1
   rm -rf bin/packages
   if make package/podkop-engine/compile -j"$(nproc)" V="${V:-s}" > "$OUT/build-$LINE.log" 2>&1; then
-    # ipk уже содержит pkgarch в имени; apk — нет, а в релизе все архитектуры лежат рядом
+    # имена как у релизов sing-box: <пакет>_<версия>_openwrt_<pkgarch>.<ipk|apk>
     find bin/packages \( -name 'podkop-engine*.ipk' -o -name 'podkop-engine*.apk' \) | while read -r f; do
-      case $f in
-        *.apk) arch=$(basename "$(dirname "$(dirname "$f")")"); dst="$OUT/$(basename "${f%.apk}")_$arch.apk";;
-        *)     dst="$OUT/$(basename "$f")";;
-      esac
+      arch=$(basename "$(dirname "$(dirname "$f")")")
+      dst="$OUT/podkop-engine_${SB_VERSION}-r${SB_RELEASE}_openwrt_${arch}.${f##*.}"
       cp "$f" "$dst"; ls -l "$dst"
     done
   else

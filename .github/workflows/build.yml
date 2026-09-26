@@ -87,7 +87,7 @@ jobs:
         run: |
           for line in ${{ inputs.lines }}; do
             v=$(. ./versions.env; eval echo "\$SB_$(echo $line | tr . _)_VERSION")
-            mkdir -p "one/$line" && cp pkgs/podkop-engine[-_]"$v"-* "one/$line/"
+            mkdir -p "one/$line" && cp pkgs/podkop-engine_"$v"-* "one/$line/"
             echo "::group::$line"
             docker run --rm -v "$PWD/one/$line:/pkgs:ro" -v "$PWD/lab/podkop-check:/t:ro" -v "$PWD/lab:/lab:ro" \
               "${{ matrix.rootfs }}" sh /lab/pkg-test.sh
@@ -115,13 +115,10 @@ jobs:
         with:
           path: art
           pattern: "*-*"
-      - name: Draft release
+      - name: Draft releases (one per sing-box line)
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           mkdir dist && find art -type f \( -name '*.ipk' -o -name '*.apk' \) -exec cp {} dist/ \;
-          (cd dist && sha256sum -- * > SHA256SUMS)
-          . ./versions.env
-          tag="pe-$(date -u +%Y%m%d)-${{ github.run_number }}"
-          notes="sing-box: $SB_1_12_VERSION-r$SB_1_12_RELEASE, $SB_1_13_VERSION-r$SB_1_13_RELEASE, $SB_1_14_VERSION-r$SB_1_14_RELEASE"
-          gh release create "$tag" --draft --title "$tag" --notes "$notes" dist/*
+          scripts/release.sh dist ${{ inputs.lines }}

@@ -3,7 +3,7 @@
 # из собранных x86_64-ipk podkop-engine.
 #   lab/fetch-bins.sh <каталог с .ipk> <lab/bin>
 set -eu
-PKGS=$(cd "${1:?dir with podkop-engine_*_x86_64.ipk}" && pwd)
+PKGS=$(cd "${1:?dir with podkop-engine_*_openwrt_x86_64.ipk}" && pwd)
 mkdir -p "${2:?output dir}"; BIN=$(cd "$2" && pwd)
 # 24.11.21 и 25.4.30 — до поддержки MLKEM в REALITY (25.5.16), 26.7.28 — minClientVer по умолчанию,
 # 26.9.9 — требует MLKEM; XRAY_EXTRA — добавить свежие версии без правки скрипта.
@@ -15,7 +15,7 @@ for v in $XRAY_VERSIONS; do
   unzip -o -q "$tmp/x.zip" xray -d "$tmp" && mv "$tmp/xray" "$BIN/xray-$v"
 done
 found=0
-for ipk in "$PKGS"/podkop-engine_*_x86_64.ipk; do
+for ipk in "$PKGS"/podkop-engine_*_openwrt_x86_64.ipk; do
   [ -f "$ipk" ] || continue; found=$((found+1))
   v=$(basename "$ipk" | sed 's/^podkop-engine_\([^_]*\)_.*/\1/')
   rm -rf "$tmp/p" && mkdir -p "$tmp/p" && cd "$tmp/p"
@@ -25,5 +25,5 @@ for ipk in "$PKGS"/podkop-engine_*_x86_64.ipk; do
   cd - >/dev/null
 done
 rm -rf "$tmp"
-[ "$found" -gt 0 ] || { echo "no podkop-engine_*_x86_64.ipk in $PKGS" >&2; exit 1; }
+[ "$found" -gt 0 ] || { echo "no podkop-engine_*_openwrt_x86_64.ipk in $PKGS" >&2; exit 1; }
 ls -l "$BIN"

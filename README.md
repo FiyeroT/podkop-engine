@@ -17,6 +17,8 @@
 | отпечатки uTLS | `firefox` = Firefox 148, `safari` = Safari 26.3 (как в Xray), `random` выбирает только из chrome/firefox/safari |
 | состав | только то, что нужно podkop: `with_quic` (Hysteria2, TUIC), `with_utls` (REALITY, `fp=`), `with_clash_api` (дашборд LuCI, YACD) |
 | 1.14: `podkop_slim` | нет CLI `sing-box api`, API-сервиса и протокола snell (~6 МБ) |
+| старт без списков (1.13, 1.14) | если remote rule-set не скачался при старте (WAN ещё не поднялся, неверное время, первый узел urltest мёртв), sing-box стартует с пустым списком и докачивает его (5, 10, 20 с, дальше раз в 30 с), а не падает; после докачки один раз запускает `podkop list_update` |
+| urltest (1.13) | перепроверяет узлы при смене сетевого интерфейса (как 1.14), а не через 3 минуты |
 | зависимости | без `kmod-tun` и `kmod-inet-diag` |
 | версия | `sing-box version` → `1.14.2-pdk` |
 
@@ -47,7 +49,11 @@ patches/v1.12, v1.13, v1.14   патчи к тегу upstream (git format-patch)
   0001  reality: X25519MLKEM768 и версия клиента 26.3.27
   0002  utls: firefox -> Firefox 148, safari -> Safari 26.3
   0003  (1.14) тег podkop_slim: без snell и API-сервиса
-openwrt/podkop-engine/        Makefile пакета (+ init-скрипт и UCI-конфиг из net/sing-box)
+  0003 (1.13) / 0004 (1.14)  rule-set: старт с пустым списком, докачка, хук
+                             SING_BOX_RULESET_RECOVERED_HOOK
+  0004  (1.13) urltest: перепроверка при смене интерфейса
+openwrt/podkop-engine/        Makefile пакета (+ init-скрипт и UCI-конфиг из net/sing-box);
+                              init передаёт sing-box хук files/lists-recovered, если стоит podkop
 versions.env                  версии upstream, sha256 архивов, ревизии пакета, Go, релизы SDK
 scripts/gen-matrix.py         pkgarch -> образ openwrt/sdk
 scripts/sdk-build.sh          сборка в образе SDK (одна или несколько веток)
@@ -73,3 +79,16 @@ lab/fetch-bins.sh out lab/bin && lab/gate.sh lab/bin
 ```
 
 Выпуск новой версии — `docs/RELEASE.md`, установка на роутер вручную — `docs/INSTALL.md`.
+
+## Старт, когда списки не скачиваются
+
+Обычный sing-box при недоступном remote rule-set завершается с `FATAL ... initial rule-set`;
+procd после нескольких перезапусков сдаётся, и роутер остаётся без прокси и без DNS
+(dnsmasq podkop уже переключил на sing-box). podkop-engine 1.13/1.14 в этом случае стартует с
+пустым списком и докачивает его сам. Когда докачка удалась (путь до списков заработал), sing-box
+один раз выполняет команду из `SING_BOX_RULESET_RECOVERED_HOOK`; init-скрипт пакета задаёт её,
+только если установлен podkop: `/usr/libexec/podkop-engine/lists-recovered` дожидается
+стартового `list_update` podkop (если тот ещё идёт) и запускает `podkop list_update` — так
+догружаются списки, которые podkop качает сам (подсети в nft, текстовые списки). podkop при этом
+не меняется; sing-box не перезапускается. После перезапуска sing-box списки берутся из cache.db,
+хук не срабатывает.

@@ -1,0 +1,20 @@
+#!/bin/sh
+# Запускается podkop-engine (sing-box) один раз, когда remote rule-set'ы, не скачавшиеся
+# при старте, всё-таки скачались: путь до списков (прокси секции или прямой выход)
+# заработал, значит, пройдёт и загрузка самого podkop (CIDR в nft, текстовые списки).
+# Теги восстановившихся rule-set'ов — в $SING_BOX_RULESET_TAGS.
+
+PIDFILE=/var/run/podkop_list_update.pid
+
+logger -t podkop-engine "rule-set(s) recovered: ${SING_BOX_RULESET_TAGS:-?}; re-running podkop list_update"
+
+# podkop при старте запускает list_update в фоне и пишет его PID в $PIDFILE.
+# Если он ещё идёт — дождаться (не дольше 5 минут), чтобы не качать параллельно.
+pid=$(cat "$PIDFILE" 2>/dev/null)
+waited=0
+while [ -n "$pid" ] && [ -d "/proc/$pid" ] && [ "$waited" -lt 300 ]; do
+	sleep 2
+	waited=$((waited + 2))
+done
+
+exec /usr/bin/podkop list_update

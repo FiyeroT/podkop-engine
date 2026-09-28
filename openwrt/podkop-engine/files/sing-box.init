@@ -33,6 +33,9 @@ start_service() {
 	procd_set_param stdout 1
 	procd_set_param stderr 1
 	procd_set_param respawn
+	# podkop-engine: once remote rule-sets that failed at start are downloaded,
+	# re-run podkop list_update (its own lists would still be missing)
+	[ -x /usr/bin/podkop ] && procd_set_param env SING_BOX_RULESET_RECOVERED_HOOK=/usr/libexec/podkop-engine/lists-recovered
 
 	procd_close_instance
 }

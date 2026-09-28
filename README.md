@@ -52,6 +52,8 @@ patches/v1.12, v1.13, v1.14   патчи к тегу upstream (git format-patch)
   0003 (1.13) / 0004 (1.14)  rule-set: старт с пустым списком, докачка, хук
                              SING_BOX_RULESET_RECOVERED_HOOK
   0004  (1.13) urltest: перепроверка при смене интерфейса
+  0005  (1.13) rule-set: закрыть соединение неудачной загрузки (иначе при
+        повторах 404/5xx утекают сокеты и память; в 1.14 так уже в upstream)
 openwrt/podkop-engine/        Makefile пакета (+ init-скрипт и UCI-конфиг из net/sing-box);
                               init передаёт sing-box хук files/lists-recovered, если стоит podkop
 versions.env                  версии upstream, sha256 архивов, ревизии пакета, Go, релизы SDK

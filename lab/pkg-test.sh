@@ -30,7 +30,7 @@ fi
 
 v=$(sing-box version | head -1)
 echo "$v"
-echo "$v" | grep -q -- '-pdk$' || fail "unexpected version string"
+echo "$v" | grep -qE -- '-pdk-r[0-9]+$' || fail "unexpected version string"
 sing-box version | grep -q 'podkop_slim' || fail "podkop_slim tag missing"
 sing-box api >/dev/null 2>&1 && fail "api CLI must be absent"
 

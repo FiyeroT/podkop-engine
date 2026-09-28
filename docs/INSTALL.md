@@ -44,5 +44,5 @@ apk add sing-box '!podkop-engine'                                        # apk: 
 ## Проверка
 
 ```sh
-sing-box version     # sing-box version 1.14.2-pdk ... Tags: with_quic,with_utls,with_clash_api,podkop_slim,...
+sing-box version     # sing-box version 1.14.2-pdk-r2 ... Tags: with_quic,with_utls,with_clash_api,podkop_slim,...
 ```

@@ -34,7 +34,7 @@ sing-box **$v** для podkop на OpenWrt, ревизия пакета **r$r**.
 Патчи к \`v$v\`:
 $patches
 
-Теги сборки: \`with_quic,with_utls,with_clash_api,podkop_slim\`. Go $GO_VERSION. \`sing-box version\` → \`$v-pdk\`.
+Теги сборки: \`with_quic,with_utls,with_clash_api,podkop_slim\`. Go $GO_VERSION. \`sing-box version\` → \`$v-pdk-r$r\`.
 
 **Установка** (\`<pkgarch>\` — \`opkg print-architecture\` / \`apk --print-arch\`; подробнее — [docs/INSTALL.md](https://github.com/$repo/blob/main/docs/INSTALL.md)):
 

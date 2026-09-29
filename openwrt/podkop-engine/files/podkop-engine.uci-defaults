@@ -1,0 +1,9 @@
+#!/bin/sh
+# podkop-engine: /etc/config/sing-box keeps its contents on upgrade (podkop edits it), so
+# the switch of the DNS fallback, added in r4, is missing after an upgrade from older
+# releases. Add it (on) when it is missing; a value that is set stays as it is.
+uci -q get sing-box.main >/dev/null || exit 0
+uci -q get sing-box.main.dns_fallback >/dev/null && exit 0
+uci -q set sing-box.main.dns_fallback=1
+uci -q commit sing-box
+exit 0

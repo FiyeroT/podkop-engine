@@ -77,6 +77,8 @@ define Package/podkop-engine/install
 	$(INSTALL_DIR) $(1)/etc/init.d/
 	$(INSTALL_BIN) ./files/sing-box.init $(1)/etc/init.d/sing-box
 	$(INSTALL_BIN) ./files/podkop-engine.init $(1)/etc/init.d/podkop-engine
+	$(INSTALL_DIR) $(1)/etc/uci-defaults
+	$(INSTALL_BIN) ./files/podkop-engine.uci-defaults $(1)/etc/uci-defaults/99-podkop-engine
 	$(INSTALL_DIR) $(1)/usr/libexec/podkop-engine
 	$(INSTALL_BIN) ./files/lists-recovered $(1)/usr/libexec/podkop-engine/lists-recovered
 	$(INSTALL_BIN) ./files/failsafe $(1)/usr/libexec/podkop-engine/failsafe

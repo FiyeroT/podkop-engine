@@ -39,9 +39,10 @@ start_service() {
 		# once remote rule-sets that failed at start are downloaded,
 		# re-run podkop list_update (its own lists would still be missing)
 		env="SING_BOX_RULESET_RECOVERED_HOOK=/usr/libexec/podkop-engine/lists-recovered"
-		# when a DNS server reached directly through the WAN fails, answer from the provider's DNS
+		# when a DNS server reached directly through the WAN fails, answer from the provider's
+		# DNS (sing-box takes it from netifd over ubus; any value turns the fallback on)
 		config_get_bool dns_fallback "main" "dns_fallback" "1"
-		[ "$dns_fallback" -eq 1 ] && env="$env SING_BOX_DNS_FALLBACK=/tmp/resolv.conf.d/resolv.conf.auto"
+		[ "$dns_fallback" -eq 1 ] && env="$env SING_BOX_DNS_FALLBACK=ubus"
 	fi
 	[ -n "$env" ] && procd_set_param env $env
 

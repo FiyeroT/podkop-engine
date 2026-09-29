@@ -33,9 +33,17 @@ start_service() {
 	procd_set_param stdout 1
 	procd_set_param stderr 1
 	procd_set_param respawn
-	# podkop-engine: once remote rule-sets that failed at start are downloaded,
-	# re-run podkop list_update (its own lists would still be missing)
-	[ -x /usr/bin/podkop ] && procd_set_param env SING_BOX_RULESET_RECOVERED_HOOK=/usr/libexec/podkop-engine/lists-recovered
+	# podkop-engine additions, only when podkop is installed
+	local env="" dns_fallback
+	if [ -x /usr/bin/podkop ]; then
+		# once remote rule-sets that failed at start are downloaded,
+		# re-run podkop list_update (its own lists would still be missing)
+		env="SING_BOX_RULESET_RECOVERED_HOOK=/usr/libexec/podkop-engine/lists-recovered"
+		# when a DNS server reached directly through the WAN fails, answer from the provider's DNS
+		config_get_bool dns_fallback "main" "dns_fallback" "1"
+		[ "$dns_fallback" -eq 1 ] && env="$env SING_BOX_DNS_FALLBACK=/tmp/resolv.conf.d/resolv.conf.auto"
+	fi
+	[ -n "$env" ] && procd_set_param env $env
 
 	procd_close_instance
 }

@@ -1,0 +1,68 @@
+#!/bin/sh
+# podkop-engine failsafe (service /etc/init.d/podkop-engine).
+# procd restarts sing-box after a single crash. If sing-box keeps crashing (OOM, panic,
+# start error), procd gives up and reports instance.fail, while dnsmasq keeps forwarding
+# every query to 127.0.0.42 where nothing listens any more: the whole network is left
+# without DNS. Stop podkop then: it restores dnsmasq to the regular servers and removes
+# its nft rules. Internet keeps working without the proxy, the cause goes to the log.
+# podkop is started again by hand or by a reboot once the cause is fixed.
+
+FIFO=/var/run/podkop-engine.failsafe
+main=$$
+
+# kernel OOM kills since boot; the ring buffer of dmesg rotates, this counter does not
+oom_kills() { awk '/^oom_kill /{print $2}' /proc/vmstat 2>/dev/null; }
+last_error() {
+	logread -l 300 2>/dev/null | grep -E 'sing-box\[[0-9]+\]: .*(FATAL|panic|fatal error)' | tail -n 1 |
+		tr -d '\033' | sed 's/\[[0-9;]*m//g; s/^.*sing-box\[[0-9]*\]: //' | cut -c 1-300
+}
+
+rm -f "$FIFO"
+mkfifo "$FIFO" || exit 1
+# Keep one `ubus subscribe` running. After a restart of ubusd the old subscriber keeps
+# running but receives nothing, so subscribe again when the ubusd process changes. The
+# loop ends within seconds once this script is stopped, so nothing is left behind.
+(
+	while kill -0 "$main" 2>/dev/null; do
+		bus=$(pidof ubusd)
+		ubus -S subscribe service &
+		sub=$!
+		while kill -0 "$main" 2>/dev/null && kill -0 "$sub" 2>/dev/null && [ -d "/proc/$bus" ]; do
+			sleep 5
+		done
+		kill "$sub" 2>/dev/null
+		sleep 1
+	done
+) > "$FIFO" &
+
+# was the last crash an OOM kill of sing-box: the kernel counted a new OOM kill and its
+# latest victim is sing-box
+oom_seen=$(oom_kills)
+oom_new() {
+	n=$(oom_kills)
+	[ "${n:-0}" -gt "${oom_seen:-0}" ] && dmesg 2>/dev/null | grep 'Killed process' | tail -n 1 | grep -q '(sing-box)'
+	r=$?; oom_seen=$n; return $r
+}
+
+loop_oom=""   # an OOM kill happened in the current crash loop
+last_crash=0
+while read -r event; do
+	case "$event" in
+	*'"instance.respawn"'*'"service":"sing-box"'*)
+		now=$(date +%s)
+		[ $((now - last_crash)) -gt 600 ] && loop_oom=""   # a new crash loop
+		last_crash=$now
+		why=""
+		oom_new && why=" (killed by the kernel OOM-killer)" && loop_oom=1
+		logger -t podkop-engine "sing-box exited unexpectedly$why, procd restarts it"
+		;;
+	*'"instance.fail"'*'"service":"sing-box"'*)
+		oom_new && loop_oom=1   # the last crash is reported as instance.fail, not respawn
+		err=$(last_error)
+		[ -n "$loop_oom" ] && err="killed by the kernel OOM-killer${err:+; $err}"
+		loop_oom=""; last_crash=0
+		logger -t podkop-engine "sing-box keeps crashing and procd stopped restarting it; stopping podkop so that DNS works without it${err:+. Last error: $err}"
+		/etc/init.d/podkop stop
+		;;
+	esac
+done < "$FIFO"

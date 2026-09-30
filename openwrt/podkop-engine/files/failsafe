@@ -35,6 +35,22 @@ mkfifo "$FIFO" || exit 1
 	done
 ) > "$FIFO" &
 
+# memory when sing-box went down, so that a report from a router shows whether memory ran
+# out there (Wi-Fi drivers, other services) or sing-box grew: MemTotal/MemAvailable, the
+# RSS the kernel gave for sing-box when it killed it, /tmp (tmpfs, it is RAM), the cache
+# file and the largest processes
+memory_state() {
+	awk '/^MemTotal:/ {t = $2} /^MemAvailable:/ {a = $2} END {printf "MemTotal %d MB, MemAvailable %d MB", t / 1024, a / 1024}' /proc/meminfo
+	rss=$(dmesg 2>/dev/null | grep 'Killed process .*(sing-box)' | tail -n 1 | sed -n 's/.*anon-rss:\([0-9]*\)kB.*/\1/p')
+	[ -n "$oom_last" ] && [ -n "$rss" ] && printf "; sing-box had %d MB when killed" $((rss / 1024))
+	df -k /tmp 2>/dev/null | awk 'NR == 2 {printf "; /tmp %d of %d MB", $3 / 1024, $2 / 1024}'
+	cache=$(uci -q get podkop.settings.cache_path || echo /tmp/sing-box/cache.db)
+	[ -f "$cache" ] && wc -c < "$cache" | awk -v c="$cache" '{printf "; %s %.1f MB", c, $1 / 1048576}'
+	for status in /proc/[0-9]*/status; do
+		awk '/^Name:/ {n = $2} /^VmRSS:/ {print $2, n}' "$status" 2>/dev/null
+	done | sort -rn | head -n 3 | awk '{printf "%s%s %d MB", NR == 1 ? "; largest: " : ", ", $2, $1 / 1024}'
+}
+
 # was the last crash an OOM kill of sing-box: the kernel counted a new OOM kill and its
 # latest victim is sing-box
 oom_seen=$(oom_kills)
@@ -52,13 +68,15 @@ while read -r event; do
 		now=$(date +%s)
 		[ $((now - last_crash)) -gt 600 ] && loop_oom=""   # a new crash loop
 		last_crash=$now
-		why=""
-		oom_new && why=" (killed by the kernel OOM-killer)" && loop_oom=1
-		logger -t podkop-engine "sing-box exited unexpectedly$why, procd restarts it"
+		why=""; oom_last=""
+		oom_new && why=" (killed by the kernel OOM-killer)" && loop_oom=1 && oom_last=1
+		logger -t podkop-engine "sing-box exited unexpectedly$why, procd restarts it; $(memory_state)"
 		;;
 	*'"instance.fail"'*'"service":"sing-box"'*)
-		oom_new && loop_oom=1   # the last crash is reported as instance.fail, not respawn
+		oom_last=""
+		oom_new && loop_oom=1 && oom_last=1   # the last crash is reported as instance.fail, not respawn
 		err=$(last_error)
+		logger -t podkop-engine "sing-box went down for good; $(memory_state)"
 		[ -n "$loop_oom" ] && err="killed by the kernel OOM-killer${err:+; $err}"
 		loop_oom=""; last_crash=0
 		logger -t podkop-engine "sing-box keeps crashing and procd stopped restarting it; stopping podkop so that DNS works without it${err:+. Last error: $err}"

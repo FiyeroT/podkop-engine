@@ -44,7 +44,17 @@ start_service() {
 		config_get_bool dns_fallback "main" "dns_fallback" "1"
 		[ "$dns_fallback" -eq 1 ] && env="$env SING_BOX_DNS_FALLBACK=ubus"
 	fi
-	[ -n "$env" ] && procd_set_param env $env
+	# before a urltest group switches to a member, 64 KiB are downloaded through it: a
+	# server frozen after ~16 KB passes the usual small test, not this one
+	local download_check download_url
+	config_get_bool download_check "main" "urltest_download_check" "1"
+	config_get download_url "main" "urltest_download_url" "https://speed.cloudflare.com/__down?bytes=65536"
+	[ "$download_check" -eq 1 ] && [ -n "$download_url" ] && env="$env SING_BOX_URLTEST_DOWNLOAD_URL=$download_url"
+	if [ -n "$env" ]; then
+		set -f # no pathname expansion of the URL
+		procd_set_param env $env
+		set +f
+	fi
 
 	procd_close_instance
 }

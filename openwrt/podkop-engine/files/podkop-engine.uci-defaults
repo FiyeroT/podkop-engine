@@ -1,9 +1,12 @@
 #!/bin/sh
 # podkop-engine: /etc/config/sing-box keeps its contents on upgrade (podkop edits it), so
-# the switch of the DNS fallback, added in r4, is missing after an upgrade from older
-# releases. Add it (on) when it is missing; a value that is set stays as it is.
+# the switches added since are missing after an upgrade from older releases: the DNS
+# fallback (r4) and the download test before a urltest switch (r8). Add each one that is
+# missing, on; a value that is set stays as it is.
 uci -q get sing-box.main >/dev/null || exit 0
-uci -q get sing-box.main.dns_fallback >/dev/null && exit 0
-uci -q set sing-box.main.dns_fallback=1
-uci -q commit sing-box
+changed=0
+uci -q get sing-box.main.dns_fallback >/dev/null || { uci -q set sing-box.main.dns_fallback=1; changed=1; }
+uci -q get sing-box.main.urltest_download_check >/dev/null || { uci -q set sing-box.main.urltest_download_check=1; changed=1; }
+uci -q get sing-box.main.urltest_download_url >/dev/null || { uci -q set sing-box.main.urltest_download_url='https://speed.cloudflare.com/__down?bytes=65536'; changed=1; }
+[ "$changed" -eq 1 ] && uci -q commit sing-box
 exit 0

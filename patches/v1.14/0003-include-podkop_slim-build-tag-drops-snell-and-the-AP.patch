@@ -1,7 +1,7 @@
 From d5831457cf6f315bf32b6e37e6570f79ff91c576 Mon Sep 17 00:00:00 2001
-From: FiyeroT <me@fiyero.xyz>
+From: podkop-engine <me@fiyero.xyz>
 Date: Sat, 26 Sep 2026 22:31:45 +0300
-Subject: [PATCH 3/3] include: podkop_slim build tag drops snell and the API
+Subject: [PATCH 03/24] include: podkop_slim build tag drops snell and the API
  service
 
 snell and the gRPC API service are registered unconditionally since 1.14

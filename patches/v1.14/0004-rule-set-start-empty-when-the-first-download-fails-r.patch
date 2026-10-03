@@ -1,8 +1,8 @@
 From 839405f499938d5a00ece16c4b48e883d0470761 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Mon, 28 Sep 2026 08:37:30 +0300
-Subject: [PATCH 4/4] rule-set: start empty when the first download fails, retry,
- run a hook
+Subject: [PATCH 04/24] rule-set: start empty when the first download fails,
+ retry, run a hook
 
 A remote rule-set that cannot be downloaded at start (WAN not up yet, clock
 wrong, the first outbound of a urltest dead, the list host unreachable) made

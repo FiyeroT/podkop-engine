@@ -1,7 +1,7 @@
 From d8a80061eca831bc56c9e91d143ff45ceebe96ad Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Mon, 28 Sep 2026 10:26:27 +0300
-Subject: [PATCH 5/5] rule-set: close the connection of a failed download
+Subject: [PATCH 05/24] rule-set: close the connection of a failed download
 
 fetch creates a new HTTP client for every update and never closed the
 response body on an unexpected status (404, 403, 5xx). The connection then

@@ -1,7 +1,7 @@
 From c2ca939e9b4343d3974c38c971163d12262b1f5c Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Tue, 29 Sep 2026 18:33:04 +0300
-Subject: [PATCH 8/8] dns: fall back to the provider's DNS when a server
+Subject: [PATCH 08/24] dns: fall back to the provider's DNS when a server
  reached through the WAN fails
 
 With SING_BOX_DNS_FALLBACK naming a resolv.conf (podkop-engine sets

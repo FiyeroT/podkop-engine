@@ -57,7 +57,7 @@ jobs:
         run: |
           mkdir -p out dl && chmod 777 out dl
           # as root: sdk-build.sh installs lld (NaiveProxy in podkop-engine-full), then builds as buildbot
-          docker run --rm --user root -v "$PWD:/src:ro" -v "$PWD/out:/out" -v "$PWD/dl:/builder/dl" \
+          docker run --rm --user root -e PKGARCH=${{ matrix.pkgarch }} -v "$PWD:/src:ro" -v "$PWD/out:/out" -v "$PWD/dl:/builder/dl" \
             "${{ matrix.image }}" sh /src/scripts/sdk-build.sh ${{ inputs.lines }}
       - uses: actions/upload-artifact@v7
         if: always()

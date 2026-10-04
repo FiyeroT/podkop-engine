@@ -24,13 +24,16 @@ OUT=${OUT:-/out}
 log() { printf '\n=== %s\n' "$*"; }
 
 if [ "$(id -u)" = 0 ]; then
-  log "lld $LLD_VERSION (apt.llvm.org)"
-  . /etc/os-release
-  curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key > /etc/apt/trusted.gpg.d/apt.llvm.org.asc
-  echo "deb http://apt.llvm.org/$VERSION_CODENAME/ llvm-toolchain-$VERSION_CODENAME-$LLD_VERSION main" > /etc/apt/sources.list.d/llvm.list
-  apt-get update -qq >/dev/null
-  apt-get install -y -qq --no-install-recommends "lld-$LLD_VERSION" >/dev/null
-  "/usr/lib/llvm-$LLD_VERSION/bin/ld.lld" --version
+  # PKGARCH (set by CI) of a target without NaiveProxy needs no lld
+  if [ -z "${PKGARCH:-}" ] || grep -qx "$PKGARCH" "$SRC/openwrt/podkop-engine/naive.pkgarchs"; then
+    log "lld $LLD_VERSION (apt.llvm.org)"
+    . /etc/os-release
+    curl -fsSL --retry 6 --retry-all-errors --retry-delay 10 https://apt.llvm.org/llvm-snapshot.gpg.key > /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+    echo "deb http://apt.llvm.org/$VERSION_CODENAME/ llvm-toolchain-$VERSION_CODENAME-$LLD_VERSION main" > /etc/apt/sources.list.d/llvm.list
+    apt-get -o Acquire::Retries=6 update -qq >/dev/null
+    apt-get -o Acquire::Retries=6 install -y -qq --no-install-recommends "lld-$LLD_VERSION" >/dev/null
+    "/usr/lib/llvm-$LLD_VERSION/bin/ld.lld" --version
+  fi
   exec runuser -u buildbot -- env HOME=/builder SRC="$SRC" OUT="$OUT" sh "$0" "$@"
 fi
 

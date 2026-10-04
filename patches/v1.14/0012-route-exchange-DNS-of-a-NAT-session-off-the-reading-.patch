@@ -1,7 +1,7 @@
-From e027709814f057182ee22731166511e1380dd101 Mon Sep 17 00:00:00 2001
+From d696d20f15a9d99db2b55cd0c648cf9c4419b803 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Wed, 30 Sep 2026 23:36:29 +0300
-Subject: [PATCH 12/35] route: exchange DNS of a NAT session off the reading
+Subject: [PATCH 12/45] route: exchange DNS of a NAT session off the reading
  loop
 
 udpnat calls the packet handler of an existing session from the reading loop
@@ -12,8 +12,6 @@ a new FakeIP address written to the cache file, a DoT connection being set up
 a known name waited 1.6 s. The exchange now runs in a goroutine of its own, as
 in sing-box 1.13; the goroutine lives as long as ExchangeAsync, and goroutines
 and memory under load stay as they were.
-
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  route/dns_nat.go | 6 +++++-
  1 file changed, 5 insertions(+), 1 deletion(-)

@@ -1,14 +1,12 @@
-From 34a8fb2fd7bd509b57af89bdca93e5a92fd1b2db Mon Sep 17 00:00:00 2001
+From 48b9d69a8d19b34ff2ab34b1b2fe32dab7fba44e Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Sat, 26 Sep 2026 20:23:09 +0300
-Subject: [PATCH 01/35] reality: keep X25519MLKEM768 key share, announce client
+Subject: [PATCH 01/45] reality: keep X25519MLKEM768 key share, announce client
  version 26.3.27
 
 Xray-core v26.9.8+ (XTLS/REALITY@8cdf7bf) rejects a Client Hello without an
 X25519MLKEM768 key share before X25519; Xray-core v26.7.x defaults
 minClientVer to 26.3.27 and rejects the 1.8.1 announced before.
-
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  common/tls/reality_client.go | 33 +++++++++++++--------------------
  1 file changed, 13 insertions(+), 20 deletions(-)

@@ -1,7 +1,7 @@
-From 492e968d9cf010c0c19a9d64c1f41694df078acb Mon Sep 17 00:00:00 2001
+From dc9284098234adcb265bc55d36b18ed27db9877e Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Fri, 2 Oct 2026 06:52:30 +0300
-Subject: [PATCH 12/35] route: a FakeIP address without a record goes by the
+Subject: [PATCH 12/44] route: a FakeIP address without a record goes by the
  sniffed domain
 
 A connection to a FakeIP address the store has no record for was refused
@@ -20,8 +20,6 @@ refused as before, once the rules are through.
 Lab (podkop, 100 names, their records gone): TLS 100 of 100 and HTTP 100 of
 100 connections reach their own domain, 100 of 100 connections that name no
 domain are refused. QUIC is not tested.
-
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  route/route.go | 39 +++++++++++++++++++++++++++++++++++----
  1 file changed, 35 insertions(+), 4 deletions(-)

@@ -1,7 +1,7 @@
-From 550aeb3807729b0b8b1bdc2eeb543cbb57a22b09 Mon Sep 17 00:00:00 2001
+From a1130ddded3189dba22ca083aafaf351fb832c9d Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Fri, 2 Oct 2026 07:21:22 +0300
-Subject: [PATCH 11/35] dns/fakeip: answer from memory, save to the cache file
+Subject: [PATCH 11/45] dns/fakeip: answer from memory, save to the cache file
  in the background
 
 The store asked the cache file for everything. A query for a known name and
@@ -59,8 +59,6 @@ it. A burst of 100 new names gets its last answer in 2-4 ms, on the
 emulated flash too (upstream: about 1 s). kill -9 right after such a burst:
 all 100 addresses still lead to their names. A range of 29 addresses and
 100 new names: a name queried all the time keeps its address.
-
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  dns/transport/fakeip/memory.go               |   93 --
  dns/transport/fakeip/store.go                |  990 +++++++++++++--

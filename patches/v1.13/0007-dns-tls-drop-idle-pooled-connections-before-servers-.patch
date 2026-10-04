@@ -1,7 +1,7 @@
-From 196b7c93b69f8c1927920d424bb28cbb8f8c2d3c Mon Sep 17 00:00:00 2001
+From b527d8a8f8ad4c6bd0bc5e183b6700464879f46f Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Tue, 29 Sep 2026 15:33:06 +0300
-Subject: [PATCH 07/35] dns/tls: drop idle pooled connections before servers
+Subject: [PATCH 07/44] dns/tls: drop idle pooled connections before servers
  close them
 
 Public DoT servers close idle connections after 10 s (Cloudflare, Quad9),
@@ -15,8 +15,6 @@ and a query tries up to 5 pooled connections before giving up. Against five
 public servers, queries after 25 s and 70 s of idle time now all succeed
 (before: all failed on Cloudflare and Quad9 after 25 s and on every server
 after 70 s).
-
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  dns/transport/tls.go | 16 ++++++++++++++--
  1 file changed, 14 insertions(+), 2 deletions(-)

@@ -1,7 +1,7 @@
-From e70b5bd4bca1a9803a60bc09e6ebd015b3242886 Mon Sep 17 00:00:00 2001
+From b30e1e424daaa16cfd0c850dda9764690ccd90f3 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Mon, 28 Sep 2026 08:37:30 +0300
-Subject: [PATCH 04/35] rule-set: start empty when the first download fails,
+Subject: [PATCH 04/45] rule-set: start empty when the first download fails,
  retry, run a hook
 
 A remote rule-set that cannot be downloaded at start (WAN not up yet, clock
@@ -18,8 +18,6 @@ When such a rule-set is downloaded at last, the command in
 SING_BOX_RULESET_RECOVERED_HOOK (if set) is run once via /bin/sh, with the
 tags in SING_BOX_RULESET_TAGS (rule-sets recovering within 5 s are batched).
 podkop uses it to re-run its own list download.
-
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  route/rule/rule_set_hook.go    | 55 ++++++++++++++++++++++++++++++++++
  route/rule/rule_set_remote.go  |  6 +++-

@@ -1,7 +1,7 @@
-From 50f0a77bbfb22397075d98a5d564b3992b29dc0f Mon Sep 17 00:00:00 2001
+From e541a1a627b6f79ed8c57a17f8eb5b099f059fd6 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Sat, 3 Oct 2026 11:27:47 +0300
-Subject: [PATCH 19/35] dns: retransmit plain UDP queries while no answer has
+Subject: [PATCH 19/45] dns: retransmit plain UDP queries while no answer has
  come
 
 Our fresh-socket exchange sent a query once and waited for its deadline.

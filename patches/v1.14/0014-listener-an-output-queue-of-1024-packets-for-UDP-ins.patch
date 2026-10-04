@@ -1,7 +1,7 @@
-From 8a2278e28e803d284b8209dcad985978671ae803 Mon Sep 17 00:00:00 2001
+From 91f7e46e353d17dbeb7cf23391fe628c744950bf Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Fri, 2 Oct 2026 07:03:12 +0300
-Subject: [PATCH 14/35] listener: an output queue of 1024 packets for UDP
+Subject: [PATCH 14/45] listener: an output queue of 1024 packets for UDP
  instead of 64
 
 Packets written to a UDP inbound pass through a queue to the one goroutine
@@ -26,8 +26,6 @@ the kernel drops at the full receive buffer of the socket. A flood of 1.4
 million queries per second for 5 s: 90-170 MB of memory at most; with
 writers waiting for room 360-400 MB, where the OOM killer of the lab
 container (512 MB) ended it.
-
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  common/listener/listener.go          |   2 +-
  common/listener/listener_udp.go      |  11 +++

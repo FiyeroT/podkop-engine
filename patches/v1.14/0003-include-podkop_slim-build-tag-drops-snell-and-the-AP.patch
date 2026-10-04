@@ -1,7 +1,7 @@
-From 2214efca27e41681e0b980cf2fb6a673df3ca387 Mon Sep 17 00:00:00 2001
+From 836117150a621212a67de7071856343963f3804b Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Sat, 26 Sep 2026 22:31:45 +0300
-Subject: [PATCH 03/35] include: podkop_slim build tag drops snell and the API
+Subject: [PATCH 03/45] include: podkop_slim build tag drops snell and the API
  service
 
 snell and the gRPC API service are registered unconditionally since 1.14
@@ -9,8 +9,6 @@ and podkop uses neither. With -tags podkop_slim they are replaced by stubs
 that fail with a clear error, the way optional features are stubbed out
 upstream. The sing-box api CLI (cmd/sing-box/cmd_api*.go) is removed by the
 build recipe; together this saves about 6 MB per binary.
-
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  include/registry.go       |  8 +++-----
  include/snell_api.go      | 23 +++++++++++++++++++++++

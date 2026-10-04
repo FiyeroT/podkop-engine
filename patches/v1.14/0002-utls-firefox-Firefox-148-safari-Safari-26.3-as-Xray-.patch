@@ -1,7 +1,7 @@
-From 9350f9dfc302a1fbf1aa5de3c80052cfa27d877c Mon Sep 17 00:00:00 2001
+From e8f1060d617a6b84c4226570863d99bf2250f818 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Sat, 26 Sep 2026 20:36:22 +0300
-Subject: [PATCH 02/35] utls: firefox -> Firefox 148, safari -> Safari 26.3 (as
+Subject: [PATCH 02/45] utls: firefox -> Firefox 148, safari -> Safari 26.3 (as
  Xray-core)
 
 metacubex/utls Firefox 120 and Safari 16.0 carry no X25519MLKEM768 key share,
@@ -9,8 +9,6 @@ so REALITY servers since Xray-core v26.9.8 reject them. Port the specs Xray-core
 uses from refraction-networking/utls@aa6edf4, including Firefox's reuse of the
 hybrid X25519 key for the classical X25519 share. "random" now picks among
 fingerprints that carry X25519MLKEM768 only.
-
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  common/tls/reality_client.go |   7 +-
  common/tls/utls_client.go    |  16 +--

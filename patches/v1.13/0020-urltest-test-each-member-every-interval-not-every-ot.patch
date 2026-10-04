@@ -1,7 +1,7 @@
-From 96cab7af84aa2476fee51c335e2fd83e32370c4b Mon Sep 17 00:00:00 2001
+From 0bcbdc10b4437fbf8a020eac16e67571782f9043 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Sat, 3 Oct 2026 06:19:26 +0300
-Subject: [PATCH 20/35] urltest: test each member every interval, not every
+Subject: [PATCH 20/44] urltest: test each member every interval, not every
  other one
 
 A member is skipped in a round when its test result is younger than the

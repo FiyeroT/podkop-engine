@@ -1,7 +1,7 @@
-From 2f6e0a8ea92360d840a0687a0f2acd4e92afe83b Mon Sep 17 00:00:00 2001
+From 180aaf8cb969fe0262997a937d0cf0b67e950dc3 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Sat, 3 Oct 2026 20:23:36 +0300
-Subject: [PATCH 31/35] readwait: wait for data without a buffer on QUIC
+Subject: [PATCH 31/45] readwait: wait for data without a buffer on QUIC
  streams and gRPC lite
 
 A connection that can wait for data without consuming it gets a read waiter

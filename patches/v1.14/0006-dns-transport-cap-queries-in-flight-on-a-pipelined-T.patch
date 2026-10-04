@@ -1,7 +1,7 @@
-From 49b095599c0aa80804da77128f83ce66ace172d3 Mon Sep 17 00:00:00 2001
+From 9e8a4b89aceb0220d1f23903e2eb49195ace871a Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Tue, 29 Sep 2026 15:33:06 +0300
-Subject: [PATCH 06/24] dns/transport: cap queries in flight on a pipelined
+Subject: [PATCH 06/35] dns/transport: cap queries in flight on a pipelined
  TCP/TLS connection
 
 Yandex DNS over TLS resets a connection that carries more than about 20

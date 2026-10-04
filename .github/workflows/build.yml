@@ -56,7 +56,8 @@ jobs:
       - name: Build in ${{ matrix.image }}
         run: |
           mkdir -p out dl && chmod 777 out dl
-          docker run --rm -v "$PWD:/src:ro" -v "$PWD/out:/out" -v "$PWD/dl:/builder/dl" \
+          # as root: sdk-build.sh installs lld (NaiveProxy in podkop-engine-full), then builds as buildbot
+          docker run --rm --user root -v "$PWD:/src:ro" -v "$PWD/out:/out" -v "$PWD/dl:/builder/dl" \
             "${{ matrix.image }}" sh /src/scripts/sdk-build.sh ${{ inputs.lines }}
       - uses: actions/upload-artifact@v7
         if: always()
@@ -87,11 +88,14 @@ jobs:
         run: |
           for line in ${{ inputs.lines }}; do
             v=$(. ./versions.env; eval echo "\$SB_$(echo $line | tr . _)_VERSION")
-            mkdir -p "one/$line" && cp pkgs/podkop-engine_"$v"-* "one/$line/"
-            echo "::group::$line"
-            docker run --rm -v "$PWD/one/$line:/pkgs:ro" -v "$PWD/lab/podkop-check:/t:ro" -v "$PWD/lab:/lab:ro" \
-              "${{ matrix.rootfs }}" sh /lab/pkg-test.sh
-            echo "::endgroup::"
+            for pkg in podkop-engine podkop-engine-full; do
+              ls pkgs/"$pkg"_"$v"-* >/dev/null 2>&1 || continue
+              mkdir -p "one/$line-$pkg" && cp pkgs/"$pkg"_"$v"-* "one/$line-$pkg/"
+              echo "::group::$line $pkg"
+              docker run --rm -e PKG="$pkg" -v "$PWD/one/$line-$pkg:/pkgs:ro" -v "$PWD/lab/podkop-check:/t:ro" -v "$PWD/lab:/lab:ro" \
+                "${{ matrix.rootfs }}" sh /lab/pkg-test.sh
+              echo "::endgroup::"
+            done
           done
       - name: REALITY lab (xray old..latest, two dest variants)
         if: matrix.format == 'ipk'

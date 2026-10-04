@@ -1,7 +1,7 @@
-From cb735d22087874abef50b5b97667497e49817650 Mon Sep 17 00:00:00 2001
+From 5e21704104f8d3b05e5036b4bb3666be1020ab26 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Tue, 29 Sep 2026 14:31:40 +0300
-Subject: [PATCH 06/24] dns/udp: one socket per query for servers reached
+Subject: [PATCH 06/35] dns/udp: one socket per query for servers reached
  without a proxy
 
 The UDP transport sent every query through one shared socket. Public

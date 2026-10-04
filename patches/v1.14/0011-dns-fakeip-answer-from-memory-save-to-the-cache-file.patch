@@ -1,7 +1,7 @@
-From 58f1757e20eb9895907b7eed77977beedd0dfdc7 Mon Sep 17 00:00:00 2001
+From 550aeb3807729b0b8b1bdc2eeb543cbb57a22b09 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Fri, 2 Oct 2026 07:21:22 +0300
-Subject: [PATCH 11/24] dns/fakeip: answer from memory, save to the cache file
+Subject: [PATCH 11/35] dns/fakeip: answer from memory, save to the cache file
  in the background
 
 The store asked the cache file for everything. A query for a known name and

@@ -15,8 +15,14 @@
 |---|---|
 | REALITY | работает с Xray-core 26.7+ и 26.9+ (как Xray-клиент 26.9.9): ClientHello несёт X25519MLKEM768, клиент заявляет версию 26.3.27 |
 | отпечатки uTLS | `firefox` = Firefox 148, `safari` = Safari 26.3 (как в Xray), `random` выбирает только из chrome/firefox/safari; `randomized` согласован: X25519MLKEM768 всегда есть и в группах, и в ключах, ALPN всегда (иначе при части запусков — `CurvePreferences includes unsupported curve`, отказ REALITY у Xray 26.9.8+, gRPC без h2) |
-| состав | только то, что нужно podkop: `with_quic` (Hysteria2, TUIC), `with_utls` (REALITY, `fp=`), `with_clash_api` (дашборд LuCI, YACD) |
-| 1.14: `podkop_slim` | нет CLI `sing-box api`, API-сервиса и протокола snell (~6 МБ) |
+| состав (1.13, 1.14) | два пакета, ставится один. `podkop-engine` — только то, что использует podkop: входы tproxy, direct, mixed; выходы direct, socks, shadowsocks, trojan, vless, hysteria2, tuic, selector, urltest (1.14 на x86_64 — 24,3 МБ вместо 29,2). `podkop-engine-full` — плюс все остальные выходы для «Outbound Config», в том числе NaiveProxy; см. ниже. Теги: `with_quic` (Hysteria2, TUIC), `with_utls` (REALITY, `fp=`), `with_clash_api` (дашборд LuCI, YACD) |
+| 1.14: без `sing-box api` | нет CLI `sing-box api` и API-сервиса (~6 МБ) |
+| DoH (1.13, 1.14) | таймаут одного медленного запроса больше не рвёт соединение вместе с запросами, на которые уже пришли ответы: на стенде 800 из 800 обычных запросов, одно соединение на весь прогон (раньше на пути podkop 1218 из 1600 ответов уходили на резервный DNS) |
+| память (1.13, 1.14) | лимит памяти Go следует за памятью, которую система ещё может дать: под нагрузкой сборщик мусора работает раньше OOM-killer (контейнер 128 МиБ, 72 МиБ заняты другим процессом: без лимита OOM-kill в каждом прогоне, с лимитом — ни одного). Простаивающее соединение больше не держит буфер 32 КиБ: VLESS без flow, Trojan, Hysteria2, TUIC, gRPC, Vision с TLS 1.3 внутри — 5–30 КиБ на соединение вместо 37–63; см. ниже |
+| журнал DNS (1.13, 1.14) | ошибка обмена с DNS-сервером пишется один раз на сервер, дальше — одна сводка раз в 10 с (раньше 200–400 строк в минуту) |
+| urltest: сервер молчит (1.13, 1.14) | соединение, на которое нет ответа дольше обычного для этого сервера (RTO по RFC 6298 + 1 с), запускает внеочередную проверку: молчащий Hysteria2 или VLESS с мёртвым выходом — переключение через ~17 с вместо ~41 с и до 3 минут; таймауты QUIC тоже считаются отказом |
+| Vision (1.13, 1.14) | после перехода Vision в прямой режим (TLS 1.3 внутри) данные копируются через splice, без буфера в простое; для этого sing-vmess берётся из форка [FiyeroT/sing-vmess](https://github.com/FiyeroT/sing-vmess) |
+| uTLS (1.13, 1.14) | состояние рукопожатия uTLS/REALITY освобождается после рукопожатия (−13 КиБ на соединение) |
 | старт без списков (1.13, 1.14) | если remote rule-set не скачался при старте (WAN ещё не поднялся, неверное время, первый узел urltest мёртв), sing-box стартует с пустым списком и докачивает его (5, 10, 20 с, дальше раз в 30 с), а не падает; после докачки один раз запускает `podkop list_update` |
 | urltest (1.13) | перепроверяет узлы при смене сетевого интерфейса (как 1.14), а не через 3 минуты |
 | DNS по UDP (1.13, 1.14) | каждый запрос уходит со своего сокета со случайным портом, как у dnsmasq: публичные резолверы, режущие поток с одного сокета (Яндекс — около 20 запросов в секунду), больше не теряют ответы под нагрузкой. Так же для `detour` в `direct` (резолвер VPN-секции podkop); через прокси — одна общая сессия, как раньше: новая UDP-сессия VLESS/Trojan/SOCKS — это новое TCP+TLS-соединение к серверу |
@@ -29,8 +35,13 @@
 | зависимости | без `kmod-tun` и `kmod-inet-diag` |
 | версия | `sing-box version` → `1.14.2-pdk-r2` (версия upstream и ревизия пакета; в r1 было просто `-pdk`) |
 
-Чего нет по сравнению с полным sing-box: TUN (gvisor), WireGuard/Tailscale внутри sing-box
-(WireGuard/AmneziaWG в podkop подключаются интерфейсом OpenWrt — это работает), DHCP-DNS, ACME и т.п.
+Чего нет по сравнению с полным sing-box (ни в одном пакете): серверных входов (кроме tproxy,
+direct и mixed, которые слушает podkop), TUN, WireGuard/Tailscale внутри sing-box
+(WireGuard/AmneziaWG в podkop подключаются интерфейсом OpenWrt — это работает), DNS-серверов
+DoQ/DoH3 и DHCP, служб, ACME и т.п. В `podkop-engine`, кроме того, нет выходов http, vmess, snell,
+tor, ssh, shadowtls, anytls, hysteria и naive — они в `podkop-engine-full`. Конфиг с отсутствующим
+типом не проходит `sing-box check` с понятной ошибкой: `vmess outbound is not included in this build
+(podkop_slim), install podkop-engine-full or rebuild with -tags podkop_full`.
 
 **Совместимость с серверами.** Патченный клиент ведёт себя как Xray-клиент 26.9.9. Единственный
 случай, где обычный sing-box работает, а этот — нет: Xray-сервер ≤ 25.4.30 и сайт-прикрытие,
@@ -46,6 +57,7 @@
 
 Релизы — по одному на ветку (тег `v<версия sing-box>-r<ревизия>`, например `v1.14.2-r1`), файлы
 названы как у sing-box: `podkop-engine_1.14.2-r1_openwrt_<pkgarch>.ipk` / `.apk`, плюс `SHA256SUMS`.
+С r9 (1.13, 1.14) рядом лежит `podkop-engine-full_<версия>-r<ревизия>_openwrt_<pkgarch>.ipk` / `.apk`.
 
 Go во всех сборках один — закреплённый `lang/golang` из openwrt/packages (Go 1.26.x).
 
@@ -86,13 +98,28 @@ patches/v1.12, v1.13, v1.14   патчи к тегу upstream (git format-patch)
   0023  (1.13, 1.14) urltest: проба загрузки 64 КиБ перед переключением
         (SING_BOX_URLTEST_DOWNLOAD_URL)
   0024  (1.13, 1.14) include: без службы resolved (−15 % размера)
+  0025  dns/https: сброс DoH по таймауту, только если позже начатые запросы не получили ответа
+  0026  tls: состояние рукопожатия uTLS/REALITY освобождается после него
+  0027  dns: ошибки обмена — строка на сервер и сводка раз в 10 с
+  0028  urltest: таймаут, который заодно сообщает «закрыто» (quic-go), — отказ члена
+  0029  badtls: дочитать alert после данных, как crypto/tls
+  0030  tls: соединения TLS-дозвона ждут данных без буфера (badtls)
+  0031  readwait: ожидание данных без буфера у потоков QUIC (Hysteria2, TUIC) и gRPC-lite
+  0032  box: лимит памяти Go следует за памятью, которую система ещё может дать
+  0033  urltest: внеочередная проверка члена, если соединение не получает ответа
+  0034  go.mod: sing-vmess из форка (Vision в прямом режиме — splice)
+  0035  include: тег podkop_slim — протоколы podkop, podkop_full — все выходы
+        (0025–0035 — у обеих веток под одними номерами)
 openwrt/podkop-engine/        Makefile пакета (+ init-скрипт и UCI-конфиг из net/sing-box);
                               init передаёт sing-box хук files/lists-recovered и включает
                               резервный DNS, если стоит podkop; files/failsafe и
                               files/podkop-engine.init — служба failsafe;
                               files/podkop-engine.uci-defaults — dns_fallback и
                               urltest_download_* после обновления
-versions.env                  версии upstream, sha256 архивов, ревизии пакета, Go, релизы SDK
+openwrt/podkop-engine/naive.pkgarchs
+                              pkgarch, для которых sing-box публикует cronet (NaiveProxy
+                              в podkop-engine-full); files/config.json — конфиг по умолчанию
+versions.env                  версии upstream, sha256 архивов, ревизии пакета, Go, lld, релизы SDK
 scripts/gen-matrix.py         pkgarch -> образ openwrt/sdk
 scripts/sdk-build.sh          сборка в образе SDK (одна или несколько веток)
 lab/                          стенд: Xray-сервер/клиент + sing-box, проверка пакета в OpenWrt
@@ -102,14 +129,19 @@ lab/                          стенд: Xray-сервер/клиент + sing-
 ## Локальная сборка одной архитектуры
 
 ```sh
-docker run --rm -v "$PWD:/src:ro" -v "$PWD/out:/out" \
+docker run --rm --user root -v "$PWD:/src:ro" -v "$PWD/out:/out" \
   openwrt/sdk:x86-64-v24.10.8 sh /src/scripts/sdk-build.sh 1.14
 ```
+
+С `--user root` скрипт ставит в контейнер lld из apt.llvm.org (NaiveProxy в
+`podkop-engine-full` линкуется только им) и дальше собирает от `buildbot`. Без root
+`podkop-engine-full` собирается без NaiveProxy.
 
 ## Проверки
 
 ```sh
 # пакет в OpenWrt + podkop + `sing-box check` на конфиге, собранном кодом podkop
+# (-e PKG=podkop-engine-full — второй пакет: все выходы и NaiveProxy)
 docker run --rm -v "$PWD/out:/pkgs:ro" -v "$PWD/lab/podkop-check:/t:ro" -v "$PWD/lab:/lab:ro" \
   openwrt/rootfs:x86-64-24.10.8 sh /lab/pkg-test.sh
 # стенд REALITY: Xray 24.11 … 26.9 × прикрытие с/без MLKEM, сверка с ожиданием
@@ -117,6 +149,42 @@ lab/fetch-bins.sh out lab/bin && lab/gate.sh lab/bin
 ```
 
 Выпуск новой версии — `docs/RELEASE.md`, установка на роутер вручную — `docs/INSTALL.md`.
+
+## podkop-engine и podkop-engine-full (1.13, 1.14)
+
+`podkop-engine` содержит то, что пишет в конфиг podkop, и TUIC. Если в «Outbound Config» нужен
+другой протокол, ставится `podkop-engine-full`: в нём есть все выходы sing-box, кроме block
+(в podkop вместо него действие reject) и bridge, а входы, DNS-серверы и службы — те же, что в
+`podkop-engine`.
+
+| | `podkop-engine` | `podkop-engine-full` |
+|---|---|---|
+| выходы | direct, socks, shadowsocks, trojan, vless, hysteria2, tuic, selector, urltest | то же + http, vmess, snell (1.14), tor (нужен пакет tor), ssh, shadowtls, anytls, hysteria, naive |
+| 1.14, x86_64 / mipsel | 24,3 / 25,8 МБ | 26,0 / 27,7 МБ, с NaiveProxy на x86_64 — 37,0 МБ |
+| 1.13, x86_64 / mipsel | 21,2 / 22,7 МБ | 22,4 / 23,9 МБ, с NaiveProxy на x86_64 — 33,3 МБ |
+
+(До r9 оба набора были в одном пакете: 1.14 — 29,2 / 31,0 МБ, 1.13 — 25,3 / 26,8 МБ.)
+
+**NaiveProxy** собирается из cronet (сетевой стек Chromium), который sing-box публикует только
+для части архитектур, и добавляет к бинарю около 11 МБ. Он есть в `podkop-engine-full` для
+x86_64, i386_pentium4, aarch64 (все четыре pkgarch), armv7 с VFP (arm_cortex-a5_vfpv4,
+a7_neon-vfpv4, a7_vfpv4, a8_vfpv3, a9_neon, a9_vfpv3-d16, a15_neon-vfpv4), mipsel_24kc,
+mipsel_74kc, riscv64_generic и loongarch64_generic. На остальных (mips big-endian — ath79 и
+подобные, mips64, armv5/v6, arm без FPU, mipsel_24kf, mipsel_mips32) выход naive отвечает
+`naive outbound is not included in this build`. mipsel_mips32 исключён сознательно: cronet собран
+под MIPS32r2.
+
+Переход с одного пакета на другой (настройки `/etc/config/sing-box` сохраняются):
+
+```sh
+# opkg (OpenWrt 24.10 и старше): podkop зависит от sing-box, отсюда --force-depends
+opkg remove --force-depends podkop-engine && opkg install /tmp/podkop-engine-full_<версия>_openwrt_<pkgarch>.ipk
+# apk (OpenWrt 25.12 и snapshot): одной транзакцией
+apk add --allow-untrusted /tmp/podkop-engine-full_<версия>_openwrt_<pkgarch>.apk '!podkop-engine'
+service podkop restart
+```
+
+Обратно — то же с именами наоборот.
 
 ## Старт, когда списки не скачиваются
 
@@ -247,6 +315,29 @@ SPI-NAND; там транзакция пишется дольше, и в неё 
 
 Имена сравниваются без учёта регистра. «Flush FakeIP» в Clash API (кнопка в дашборде) очищает и
 память, и файл.
+
+## Память (1.13, 1.14)
+
+Сборщик мусора Go по умолчанию даёт куче вырасти вдвое против живых данных, прежде чем
+запуститься. На роутере со 128 МБ под нагрузкой это доводит до OOM-killer, и вместе с sing-box
+падают прокси и DNS. Здесь sing-box держит лимит памяти Go (`GOMEMLIMIT`) равным памяти Go плюс
+тому, что система ещё может дать (`MemAvailable`, а в cgroup с лимитом — остаток до него), минус
+страницы собственного кода; пересчитывает его после каждой сборки мусора. Собственные выделения
+лимит не двигают, его сдвигают только другие процессы, когда берут или отдают память. Когда памяти
+мало, сборщик работает чаще и раньше отдаёт свободные страницы системе. Когда памяти много, лимит
+не мешает: процессор тратится так же, как без него. При старте в лог пишется
+`memory limit <N>, following the available memory`.
+
+Задать лимит вручную или выключить:
+
+```sh
+uci set sing-box.main.memory_limit=64MiB      # фиксированный лимит
+uci set sing-box.main.memory_limit=off        # без лимита
+uci commit sing-box; service podkop restart
+```
+
+Значение передаётся как `GOMEMLIMIT` (единицы B, KiB, MiB, GiB, TiB); строку другого вида
+init-скрипт пропускает с записью в лог: Go с неверным `GOMEMLIMIT` не стартует.
 
 ## Failsafe
 

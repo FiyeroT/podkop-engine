@@ -1,7 +1,7 @@
-From 0d89aa9bdfec53645b2d12ff320626ae820ffa3e Mon Sep 17 00:00:00 2001
-From: sing-box-patched <me@fiyero.xyz>
+From 34a8fb2fd7bd509b57af89bdca93e5a92fd1b2db Mon Sep 17 00:00:00 2001
+From: FiyeroT <me@fiyero.xyz>
 Date: Sat, 26 Sep 2026 20:23:09 +0300
-Subject: [PATCH 01/24] reality: keep X25519MLKEM768 key share, announce client
+Subject: [PATCH 01/35] reality: keep X25519MLKEM768 key share, announce client
  version 26.3.27
 
 Xray-core v26.9.8+ (XTLS/REALITY@8cdf7bf) rejects a Client Hello without an

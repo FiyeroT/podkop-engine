@@ -50,6 +50,18 @@ start_service() {
 	config_get_bool download_check "main" "urltest_download_check" "1"
 	config_get download_url "main" "urltest_download_url" "https://speed.cloudflare.com/__down?bytes=65536"
 	[ "$download_check" -eq 1 ] && [ -n "$download_url" ] && env="$env SING_BOX_URLTEST_DOWNLOAD_URL=$download_url"
+	# sing-box keeps the Go memory limit at the memory the system can still give; a size
+	# here (such as 64MiB) replaces it, off removes it. Go stops at start on a malformed
+	# GOMEMLIMIT, so a value it would not take is left out
+	local memory_limit
+	config_get memory_limit "main" "memory_limit"
+	if [ -n "$memory_limit" ]; then
+		if echo "$memory_limit" | grep -qE '^(off|[0-9]+(B|KiB|MiB|GiB|TiB)?)$'; then
+			env="$env GOMEMLIMIT=$memory_limit"
+		else
+			logger -t sing-box "memory_limit '$memory_limit' ignored: use off or a size such as 64MiB"
+		fi
+	fi
 	if [ -n "$env" ]; then
 		set -f # no pathname expansion of the URL
 		procd_set_param env $env

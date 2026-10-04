@@ -6,6 +6,11 @@
 архитектуру (`opkg print-architecture` / `apk --print-arch`), например
 `podkop-engine_1.14.2-r1_openwrt_aarch64_cortex-a53.ipk`.
 
+С r9 (1.13, 1.14) пакетов два, ставится один: `podkop-engine` — протоколы, которые использует
+podkop, и TUIC; `podkop-engine-full` — плюс все остальные выходы для «Outbound Config» (http,
+vmess, snell, tor, ssh, shadowtls, anytls, hysteria, NaiveProxy). Команды ниже одинаковы для
+обоих, меняется только имя файла.
+
 ## OpenWrt 24.10 и старше (opkg, .ipk)
 
 ```sh
@@ -32,10 +37,20 @@ apk заменяет установленный `sing-box` сам (одной т
 При установке из файла apk закрепляет в `/etc/apk/world` именно этот пакет, и `apk upgrade`
 не возвращает фидовый sing-box, даже если тот новее.
 
+## Переход между podkop-engine и podkop-engine-full
+
+```sh
+opkg remove --force-depends podkop-engine && opkg install /tmp/podkop-engine-full_<версия>_openwrt_<pkgarch>.ipk   # opkg
+apk add --allow-untrusted /tmp/podkop-engine-full_<версия>_openwrt_<pkgarch>.apk '!podkop-engine'                # apk
+service podkop restart
+```
+
+Обратно — то же с именами наоборот. `/etc/config/sing-box` сохраняется.
+
 ## Откат на sing-box из репозитория
 
 ```sh
-opkg remove --force-depends podkop-engine && opkg install sing-box      # opkg
+opkg remove --force-depends podkop-engine && opkg install sing-box      # opkg (или podkop-engine-full)
 apk add sing-box '!podkop-engine'                                        # apk: одной транзакцией
 ```
 

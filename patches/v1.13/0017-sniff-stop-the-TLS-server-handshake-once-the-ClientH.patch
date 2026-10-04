@@ -1,7 +1,7 @@
-From 76b948a86c1606d4234e7dea24c23cd39bf3d156 Mon Sep 17 00:00:00 2001
+From 0e4e053623509e13551d67b2be5a3bfd182df363 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Sat, 3 Oct 2026 03:46:31 +0300
-Subject: [PATCH 17/24] sniff: stop the TLS server handshake once the
+Subject: [PATCH 17/35] sniff: stop the TLS server handshake once the
  ClientHello is captured
 
 TLSClientHello parses the ClientHello by running the crypto/tls server handshake

@@ -23,9 +23,17 @@ for LINE in "$@"; do
   fi
   dir=$(mktemp -d)
   cp "$DIST"/podkop-engine_"$v"-r"$r"_openwrt_*.ipk "$DIST"/podkop-engine_"$v"-r"$r"_openwrt_*.apk "$dir"/
+  # podkop-engine-full: from the lines whose patches have the tag podkop_full
+  cp "$DIST"/podkop-engine-full_"$v"-r"$r"_openwrt_*.[ai]pk "$dir"/ 2>/dev/null || true
   (cd "$dir" && sha256sum -- *.ipk *.apk > SHA256SUMS)
-  n_ipk=$(ls "$dir"/*.ipk | wc -l); n_apk=$(ls "$dir"/*.apk | wc -l)
-  arches=$(ls "$dir"/*.ipk "$dir"/*.apk | sed 's/.*_openwrt_\(.*\)\.[ai]pk$/\1/' | sort -u | tr '\n' ' ')
+  n_ipk=$(ls "$dir"/podkop-engine_*.ipk | wc -l); n_apk=$(ls "$dir"/podkop-engine_*.apk | wc -l)
+  n_full=$(ls "$dir"/podkop-engine-full_*.[ai]pk 2>/dev/null | wc -l)
+  # NaiveProxy in podkop-engine-full: the pkgarchs of naive.pkgarchs (sdk-build.sh fails a
+  # build where it is listed but missing), every other one of this release has none
+  full_arches=$(ls "$dir"/podkop-engine-full_*.[ai]pk 2>/dev/null | sed 's/.*_openwrt_\(.*\)\.[ai]pk$/\1/' | sort -u)
+  naive_yes=$(for a in $full_arches; do grep -qx "$a" openwrt/podkop-engine/naive.pkgarchs && printf '`%s` ' "$a"; done)
+  naive_no=$(for a in $full_arches; do grep -qx "$a" openwrt/podkop-engine/naive.pkgarchs || printf '`%s` ' "$a"; done)
+  arches=$(ls "$dir"/podkop-engine_*.ipk "$dir"/podkop-engine_*.apk | sed 's/.*_openwrt_\(.*\)\.[ai]pk$/\1/' | sort -u | tr '\n' ' ')
   patches=$(for pf in "patches/v$LINE"/*.patch; do printf -- '- `%s` %s\n' "$(basename "$pf" | cut -c1-4)" "$(awk '/^Subject: /{s=$0; while ((getline l) > 0 && l ~ /^ /) s = s l; sub(/^Subject: \[PATCH[^]]*\] /, "", s); print s; exit}' "$pf")"; done)
   f=podkop-engine_${v}-r${r}_openwrt
   cat > "$dir/NOTES.md" <<EOF
@@ -35,17 +43,30 @@ sing-box **$v** для podkop на OpenWrt, ревизия пакета **r$r**.
 $patches
 
 Теги сборки: \`with_quic,with_utls,with_clash_api,podkop_slim\`. Go $GO_VERSION. \`sing-box version\` → \`$v-pdk-r$r\`.
+$(if [ "$n_full" -gt 0 ]; then cat <<FULL
+
+**Два пакета, ставится один из них:**
+- \`podkop-engine\` — то, что использует podkop: входы tproxy, direct, mixed; выходы direct, socks, shadowsocks, trojan, vless, hysteria2, tuic, selector, urltest. Остальные типы в «Outbound Config» отвергаются с подсказкой поставить \`podkop-engine-full\`.
+- \`podkop-engine-full\` — то же плюс все остальные выходы: http, vmess, snell (1.14), tor (нужен пакет tor), ssh, shadowtls, anytls, hysteria и NaiveProxy (кроме архитектур ниже). Теги — те же плюс \`podkop_full\` (и \`with_naive_outbound,with_musl\`, где есть NaiveProxy).
+
+**NaiveProxy в \`podkop-engine-full\` есть не на всех архитектурах.** Он работает на cronet (сетевом стеке Chromium), который sing-box выпускает не для всех процессоров; бинарь с NaiveProxy больше на 11 МБ (x86_64) — 17 МБ (mipsel).
+- есть: $naive_yes
+- **нет:** $naive_no
+
+Причины: mips big-endian и mips64 (cronet для них нет), armv5/armv6 и arm без FPU (cronet собран под ARMv7 с VFP), \`mipsel_24kc_24kf\` (плавающая точка в железе, cronet — soft-float), \`mipsel_mips32\` (cronet собран под MIPS32r2), \`i386_pentium-mmx\` (нет SSE2), \`riscv64_riscv64\` (sing-box выпускает cronet только для \`riscv64_generic\`). На этих архитектурах остальные протоколы \`podkop-engine-full\` работают, а выход naive отвечает \`naive outbound is not included in this build\`.
+FULL
+fi)
 
 **Установка** (\`<pkgarch>\` — \`opkg print-architecture\` / \`apk --print-arch\`; подробнее — [docs/INSTALL.md](https://github.com/$repo/blob/main/docs/INSTALL.md)):
 
 OpenWrt 24.10 и старше (opkg):
 \`\`\`sh
-wget -O /tmp/pe.ipk $url/$tag/${f}_<pkgarch>.ipk
+wget -O /tmp/pe.ipk $url/$tag/${f}_<pkgarch>.ipk        # podkop-engine-full: podkop-engine-full_${v}-r${r}_openwrt_<pkgarch>.ipk
 opkg remove --force-depends sing-box sing-box-tiny 2>/dev/null; opkg install /tmp/pe.ipk
 \`\`\`
 OpenWrt 25.12 и snapshot (apk):
 \`\`\`sh
-wget -O /tmp/pe.apk $url/$tag/${f}_<pkgarch>.apk
+wget -O /tmp/pe.apk $url/$tag/${f}_<pkgarch>.apk        # podkop-engine-full: podkop-engine-full_${v}-r${r}_openwrt_<pkgarch>.apk
 apk add --allow-untrusted /tmp/pe.apk
 \`\`\`
 
@@ -59,6 +80,6 @@ EOF
   fi
   gh release create "$tag" -R "$repo" --draft $latest --title "podkop-engine $v-r$r" \
     --notes-file "$dir/NOTES.md" "$dir"/*.ipk "$dir"/*.apk "$dir/SHA256SUMS"
-  echo "draft $tag: $n_ipk ipk + $n_apk apk"
+  echo "draft $tag: $n_ipk ipk + $n_apk apk, podkop-engine-full: $n_full"
   rm -rf "$dir"
 done

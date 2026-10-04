@@ -21,7 +21,9 @@
    DNS-сервер или служба — в `podkop_slim.go` и `podkop_slim_stub.go` (иначе он молча попадёт в
    `podkop-engine`); и что `cmd/sing-box/cmd_api*.go` по-прежнему исчерпывают CLI `api`.
    При новой версии cronet-go сверить `openwrt/podkop-engine/naive.pkgarchs` со строками
-   `openwrt:` матрицы naive в `.github/workflows/build.yml` sing-box.
+   `openwrt:` матрицы naive в `.github/workflows/build.yml` sing-box, а `LLD_URL`/`LLD_SHA256`
+   в `versions.env` — с `CLANG_REVISION`/`CLANG_SUB_REVISION` в
+   `src/tools/clang/scripts/update.py` naiveproxy той же версии cronet.
    Новая ветка (например 1.15): каталог `patches/v1.15`, строка в `LINES`.
 
 2. **versions.env**: `SB_<ветка>_VERSION`, `SB_<ветка>_HASH`
@@ -32,7 +34,7 @@
 
 3. **Проверить локально x86_64** (быстро, до CI):
    ```sh
-   docker run --rm --user root -v "$PWD:/src:ro" -v "$PWD/out:/out" openwrt/sdk:x86-64-v24.10.8 sh /src/scripts/sdk-build.sh 1.14
+   docker run --rm -v "$PWD:/src:ro" -v "$PWD/out:/out" openwrt/sdk:x86-64-v24.10.8 sh /src/scripts/sdk-build.sh 1.14
    for p in podkop-engine podkop-engine-full; do
      docker run --rm -e PKG=$p -v "$PWD/out:/pkgs:ro" -v "$PWD/lab/podkop-check:/t:ro" -v "$PWD/lab:/lab:ro" openwrt/rootfs:x86-64-24.10.8 sh /lab/pkg-test.sh
    done

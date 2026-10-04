@@ -129,13 +129,14 @@ lab/                          стенд: Xray-сервер/клиент + sing-
 ## Локальная сборка одной архитектуры
 
 ```sh
-docker run --rm --user root -v "$PWD:/src:ro" -v "$PWD/out:/out" \
+docker run --rm -v "$PWD:/src:ro" -v "$PWD/out:/out" \
   openwrt/sdk:x86-64-v24.10.8 sh /src/scripts/sdk-build.sh 1.14
 ```
 
-С `--user root` скрипт ставит в контейнер lld из apt.llvm.org (NaiveProxy в
-`podkop-engine-full` линкуется только им) и дальше собирает от `buildbot`. Без root
-`podkop-engine-full` собирается без NaiveProxy.
+NaiveProxy в `podkop-engine-full` линкуется только lld (объекты cronet с релокациями CREL GNU ld
+не берёт): для архитектур из `naive.pkgarchs` скрипт скачивает пакет clang Chromium (≈70 МБ,
+`LLD_URL` в `versions.env`, кэшируется в `dl/`) и берёт из него lld. CI запускает контейнер с
+`--user root`, чтобы отдать `buildbot` восстановленный из кэша `dl/`.
 
 ## Проверки
 

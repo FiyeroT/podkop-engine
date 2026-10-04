@@ -11,10 +11,10 @@
 #
 # Each line builds podkop-engine and, when its patches have the tag podkop_full,
 # podkop-engine-full: /out/podkop-engine-full_<version>-r<N>_openwrt_<pkgarch>.<ipk|apk>.
-# NaiveProxy in podkop-engine-full needs lld (see the package Makefile): started as root
-# (docker run --user root), the script installs lld $LLD_VERSION from apt.llvm.org and goes
-# on as buildbot; started as buildbot, it builds podkop-engine-full without NaiveProxy
-# unless lld is already there.
+# NaiveProxy in podkop-engine-full is linked with lld (see the package Makefile): for the
+# pkgarchs of naive.pkgarchs the script fetches the lld of Chromium's clang package, the
+# toolchain cronet is built with (LLD_URL and LLD_SHA256 in versions.env, kept in dl/).
+# Started as root (docker run --user root, as CI does), it first hands dl/ to buildbot.
 set -eu
 SRC=${SRC:-/src}
 OUT=${OUT:-/out}
@@ -24,20 +24,23 @@ OUT=${OUT:-/out}
 log() { printf '\n=== %s\n' "$*"; }
 
 if [ "$(id -u)" = 0 ]; then
-  # PKGARCH (set by CI) of a target without NaiveProxy needs no lld
-  if [ -z "${PKGARCH:-}" ] || grep -qx "$PKGARCH" "$SRC/openwrt/podkop-engine/naive.pkgarchs"; then
-    log "lld $LLD_VERSION (apt.llvm.org)"
-    . /etc/os-release
-    curl -fsSL --retry 6 --retry-all-errors --retry-delay 10 https://apt.llvm.org/llvm-snapshot.gpg.key > /etc/apt/trusted.gpg.d/apt.llvm.org.asc
-    echo "deb http://apt.llvm.org/$VERSION_CODENAME/ llvm-toolchain-$VERSION_CODENAME-$LLD_VERSION main" > /etc/apt/sources.list.d/llvm.list
-    apt-get -o Acquire::Retries=6 update -qq >/dev/null
-    apt-get -o Acquire::Retries=6 install -y -qq --no-install-recommends "lld-$LLD_VERSION" >/dev/null
-    "/usr/lib/llvm-$LLD_VERSION/bin/ld.lld" --version
-  fi
   # the download cache restored by CI belongs to the runner: Go must add new modules to it
   [ -d /builder/dl ] && chown -R buildbot:buildbot /builder/dl
   exec runuser -u buildbot -- env HOME=/builder SRC="$SRC" OUT="$OUT" sh "$0" "$@"
 fi
+
+fetch_lld() {
+  [ -n "${PODKOP_ENGINE_LLD:-}" ] && return 0
+  f=dl/$(basename "$LLD_URL")
+  if ! echo "$LLD_SHA256  $f" | sha256sum -c - >/dev/null 2>&1; then
+    curl -fsSL --retry 6 --retry-all-errors --retry-delay 10 -o "$f" "$LLD_URL"
+    echo "$LLD_SHA256  $f" | sha256sum -c - >/dev/null
+  fi
+  rm -rf /builder/podkop-engine-lld && mkdir -p /builder/podkop-engine-lld
+  tar xJf "$f" -C /builder/podkop-engine-lld bin/lld bin/ld.lld
+  PODKOP_ENGINE_LLD=/builder/podkop-engine-lld/bin/ld.lld; export PODKOP_ENGINE_LLD
+  log "$("$PODKOP_ENGINE_LLD" --version | cut -d'(' -f1)for NaiveProxy"
+}
 
 cd /builder
 [ $# -gt 0 ] || set -- $LINES
@@ -93,6 +96,9 @@ EOF
   full=; grep -qs podkop_full "$SRC/patches/v$LINE"/*.patch && full=1
   [ -n "$full" ] && echo 'CONFIG_PACKAGE_podkop-engine-full=m' >> .config
   make defconfig >/dev/null 2>&1
+  pkgarch=$(sed -n 's/^CONFIG_TARGET_ARCH_PACKAGES="\(.*\)"$/\1/p' .config)
+  naive=; [ -n "$full" ] && grep -qx "$pkgarch" package/podkop-engine/naive.pkgarchs && naive=1
+  [ -n "$naive" ] && fetch_lld
   rm -rf bin/packages
   if make package/podkop-engine/compile -j"$(nproc)" V="${V:-s}" > "$OUT/build-$LINE.log" 2>&1; then
     # имена как у релизов sing-box: <пакет>_<версия>_openwrt_<pkgarch>.<ipk|apk>
@@ -102,17 +108,13 @@ EOF
       dst="$OUT/${pkg}_${SB_VERSION}-r${SB_RELEASE}_openwrt_${arch}.${f##*.}"
       cp "$f" "$dst"; ls -l "$dst"
     done
-    # NaiveProxy must be in podkop-engine-full wherever cronet exists and lld was found
-    pkgarch=$(sed -n 's/^CONFIG_TARGET_ARCH_PACKAGES="\(.*\)"$/\1/p' .config)
-    lld=$(ls /usr/lib/llvm-19/bin/ld.lld /usr/lib/llvm-[2-9][0-9]/bin/ld.lld 2>/dev/null | tail -1)
-    if [ -n "$full" ] && grep -qx "$pkgarch" package/podkop-engine/naive.pkgarchs; then
+    # NaiveProxy must be in podkop-engine-full wherever naive.pkgarchs lists the target
+    if [ -n "$naive" ]; then
       bin=$(find build_dir -path "*/podkop-engine-full/sing-box-$SB_VERSION/*/usr/bin/sing-box" -type f | head -1)
       if [ -n "$bin" ] && grep -ao -- '-tags=[a-z0-9_,]*' "$bin" | grep -q with_naive_outbound; then
-        echo "NaiveProxy: in podkop-engine-full ($pkgarch, $lld)"
-      elif [ -n "$lld" ]; then
-        echo "NaiveProxy MISSING in podkop-engine-full ($pkgarch) although $lld is there"; status=1
+        echo "NaiveProxy: in podkop-engine-full ($pkgarch)"
       else
-        echo "NaiveProxy: not built for $pkgarch, no lld 19+ (run as root to install it)"
+        echo "NaiveProxy MISSING in podkop-engine-full ($pkgarch)"; status=1
       fi
     fi
   else

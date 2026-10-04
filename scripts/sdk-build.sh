@@ -34,6 +34,8 @@ if [ "$(id -u)" = 0 ]; then
     apt-get -o Acquire::Retries=6 install -y -qq --no-install-recommends "lld-$LLD_VERSION" >/dev/null
     "/usr/lib/llvm-$LLD_VERSION/bin/ld.lld" --version
   fi
+  # the download cache restored by CI belongs to the runner: Go must add new modules to it
+  [ -d /builder/dl ] && chown -R buildbot:buildbot /builder/dl
   exec runuser -u buildbot -- env HOME=/builder SRC="$SRC" OUT="$OUT" sh "$0" "$@"
 fi
 

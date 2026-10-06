@@ -40,6 +40,23 @@ sing-box version | grep -q 'podkop_slim' || fail "podkop_slim tag missing"
 sing-box api >/dev/null 2>&1 && fail "api CLI must be absent"
 sing-box check -c /etc/sing-box/config.json || fail "the shipped config does not pass check"
 
+# r11 on lines 1.13 and 1.14: the features line, and a share link with the xhttp transport
+# becomes an outbound that passes check; a link that cannot be used exits with status 2
+case "$v" in
+*" 1.12."*) ;;
+*)
+  sing-box version | grep -q '^Features: .*urltest.fallbacks.*transport.xhttp.*tools.decode-link' || fail "features line missing"
+  L='vless://6f1c9a0e-3b52-4c1e-9a55-2d4a1b0f7c11@203.0.113.20:443?type=xhttp&security=tls&sni=e.example.com&path=%2Fx&mode=packet-up#t'
+  o=$(sing-box tools decode-link --compact "$L") || fail "decode-link"
+  printf '{"outbounds": [%s]}\n' "$o" > /tmp/pk/xhttp.json
+  jq -e '.outbounds[0].transport.type == "xhttp"' /tmp/pk/xhttp.json >/dev/null || fail "decode-link: no xhttp transport"
+  sing-box check -c /tmp/pk/xhttp.json || fail "the decoded xhttp outbound does not pass check"
+  s=0; sing-box tools decode-link --compact "$(echo "$L" | sed 's/&mode=/\&flow=xtls-rprx-vision\&mode=/')" >/tmp/pk/bad.out 2>/tmp/pk/bad.err || s=$?
+  [ "$s" = 2 ] && [ ! -s /tmp/pk/bad.out ] && grep -q '^error: ' /tmp/pk/bad.err || fail "decode-link: bad link, status $s"
+  echo "features, xhttp and decode-link OK"
+  ;;
+esac
+
 # the outbounds only podkop-engine-full has (raw outbound configurations in podkop)
 TLS='"server": "203.0.113.20", "server_port": 443, "tls": {"enabled": true, "server_name": "e.example.com"}'
 for o in '"type": "vmess", "server": "203.0.113.20", "server_port": 443, "uuid": "6f1c9a0e-3b52-4c1e-9a55-2d4a1b0f7c11"' \

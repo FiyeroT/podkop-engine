@@ -50,9 +50,16 @@ service podkop restart
 ## Откат на sing-box из репозитория
 
 ```sh
-opkg remove --force-depends podkop-engine && opkg install sing-box      # opkg (или podkop-engine-full)
-apk add sing-box '!podkop-engine'                                        # apk: одной транзакцией
+# opkg: сначала остановить podkop и скачать пакет, потом удалять
+service podkop stop && opkg update && cd /tmp && opkg download sing-box && opkg remove --force-depends podkop-engine && opkg install /tmp/sing-box_*.ipk; service podkop start
+# apk: одной транзакцией
+apk add sing-box '!podkop-engine'
 ```
+
+На opkg порядок важен. Пока podkop работает, все DNS-запросы роутера идут в sing-box: если
+сначала удалить podkop-engine, роутер не сможет разрешить имя репозитория и скачать пакет, а
+сеть останется без DNS. Если это уже случилось, DNS возвращает `service podkop stop`. После
+установки podkop может подниматься до минуты.
 
 `apk del podkop-engine` отдельно не сработает: от него зависит podkop.
 

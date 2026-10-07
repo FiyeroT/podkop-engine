@@ -1,7 +1,7 @@
 From 0a229e10433aee841334fdc9be461ef41b1b8f95 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Sun, 4 Oct 2026 08:46:58 +0300
-Subject: [PATCH 43/68] log: format entries for the Clash API only while its
+Subject: [PATCH 43/88] log: format entries for the Clash API only while its
  logs are read
 
 With the Clash API's external_controller set, the log factory is observable:

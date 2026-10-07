@@ -3,6 +3,10 @@
 # the switches added since are missing after an upgrade from older releases: the DNS
 # fallback (r4) and the download test before a urltest switch (r8). Add each one that is
 # missing, on; a value that is set stays as it is.
+# The failsafe service came with r4: a package upgrade starts a new init script but does
+# not enable it, so after an upgrade from r1-r3 it was gone at the next boot. Its switch
+# is sing-box.main.failsafe, not the rc.d link.
+/etc/init.d/podkop-engine enabled || /etc/init.d/podkop-engine enable
 uci -q get sing-box.main >/dev/null || exit 0
 changed=0
 uci -q get sing-box.main.dns_fallback >/dev/null || { uci -q set sing-box.main.dns_fallback=1; changed=1; }

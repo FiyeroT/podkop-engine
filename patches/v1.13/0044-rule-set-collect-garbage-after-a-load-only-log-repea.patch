@@ -1,7 +1,7 @@
 From 7ebdc8aeb9c2da3b6fc5dad3ad133f89a5ff3dec Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Sun, 4 Oct 2026 08:52:50 +0300
-Subject: [PATCH 44/66] rule-set: collect garbage after a load only, log
+Subject: [PATCH 44/86] rule-set: collect garbage after a load only, log
  repeated failures sparingly
 
 A remote rule-set that never came at the start is retried every 30 s (see

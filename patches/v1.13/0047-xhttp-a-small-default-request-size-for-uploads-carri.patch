@@ -1,7 +1,7 @@
 From 6bddfb7fc4a20c6b266871395dbca52177abf60f Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Mon, 5 Oct 2026 11:40:39 +0300
-Subject: [PATCH 47/66] xhttp: a small default request size for uploads carried
+Subject: [PATCH 47/86] xhttp: a small default request size for uploads carried
  in headers or cookies
 
 ---

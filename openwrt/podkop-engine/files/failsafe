@@ -6,6 +6,8 @@
 # without DNS. Stop podkop then: it restores dnsmasq to the regular servers and removes
 # its nft rules. Internet keeps working without the proxy, the cause goes to the log.
 # podkop is started again by hand or by a reboot once the cause is fixed.
+# procd gives up after 6 crashes with less than 10 minutes between them (respawn 600 5 5
+# in /etc/init.d/sing-box); crashes further apart are restarted each time.
 
 FIFO=/var/run/podkop-engine.failsafe
 main=$$
@@ -80,7 +82,7 @@ while read -r event; do
 		[ -n "$loop_oom" ] && err="killed by the kernel OOM-killer${err:+; $err}"
 		loop_oom=""; last_crash=0
 		logger -t podkop-engine "sing-box keeps crashing and procd stopped restarting it; stopping podkop so that DNS works without it${err:+. Last error: $err}"
-		/etc/init.d/podkop stop
+		[ -x /etc/init.d/podkop ] && /etc/init.d/podkop stop
 		;;
 	esac
 done < "$FIFO"

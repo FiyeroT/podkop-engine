@@ -33,7 +33,10 @@ start_service() {
 	[ -z "$ifaces" ] || procd_set_param netdev $ifaces
 	procd_set_param stdout 1
 	procd_set_param stderr 1
-	procd_set_param respawn
+	# podkop-engine: procd's default threshold of an hour makes six crashes hours apart a
+	# crash loop that stops the service for good; only crashes less than 10 minutes
+	# apart count, as the failsafe counts them
+	procd_set_param respawn 600 5 5
 	# podkop-engine: the default limit of 4096 descriptors runs out at some 2000 proxied
 	# connections, then DNS queries fail for want of a socket; and procd kills a service
 	# 5 s after asking it to stop, while sing-box takes up to 10 s to close its connections

@@ -33,6 +33,8 @@ else
   opkg list-installed | grep -E '^(podkop|sing-box)' || true
 fi
 
+# the failsafe service is enabled whatever the order of installation (here: before podkop)
+[ -L /etc/rc.d/S95podkop-engine ] || fail "failsafe service is not enabled"
 v=$(sing-box version | head -1)
 echo "$v"
 echo "$v" | grep -qE -- '-pdk-r[0-9]+$' || fail "unexpected version string"

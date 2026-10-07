@@ -1,7 +1,7 @@
 From d696d20f15a9d99db2b55cd0c648cf9c4419b803 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Wed, 30 Sep 2026 23:36:29 +0300
-Subject: [PATCH 12/68] route: exchange DNS of a NAT session off the reading
+Subject: [PATCH 12/88] route: exchange DNS of a NAT session off the reading
  loop
 
 udpnat calls the packet handler of an existing session from the reading loop

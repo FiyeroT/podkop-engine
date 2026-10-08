@@ -1,8 +1,8 @@
-From 1d8f7ffbf7108adeb6b4c6eb83dd532b2169d1ef Mon Sep 17 00:00:00 2001
+From 015f962dc475f9e6ae84451db7e6c81627aad0fd Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Tue, 6 Oct 2026 23:40:13 +0300
-Subject: [PATCH 78/88] dns: take the first query to a server off the goroutine
- that reads client queries
+Subject: [PATCH 078/106] dns: take the first query to a server off the
+ goroutine that reads client queries
 
 The first query to a DNS server decides whether the provider fallback applies to it and,
 when it does, reads the provider's servers: an exec of ubus, bounded by 3 s.

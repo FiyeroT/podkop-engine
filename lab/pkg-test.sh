@@ -15,21 +15,31 @@ PKG=${PKG:-podkop-engine}
 PODKOP_VERSION=${PODKOP_VERSION:-0.7.22}
 REL=https://github.com/itdoginfo/podkop/releases/download/$PODKOP_VERSION
 fail() { echo "FAIL: $*"; exit 1; }
+# The package feed and GitHub drop a download now and then (podkop pulls a dozen packages
+# from the feed): what needs the network is tried up to four times, lists updated between.
+retry() {
+  n=0
+  until "$@"; do
+    n=$((n + 1)); [ $n -lt 4 ] || return 1
+    sleep 5
+    if command -v apk >/dev/null 2>&1; then apk update -q >/dev/null 2>&1 || true; else opkg update >/dev/null 2>&1 || true; fi
+  done
+}
 mkdir -p /var/lock /tmp/pk
 
 if command -v apk >/dev/null 2>&1; then
   pkg=$(ls /pkgs/${PKG}_*.apk 2>/dev/null | head -1); [ -n "$pkg" ] || fail "no $PKG .apk in /pkgs"
-  apk update -q
-  apk add -q --allow-untrusted "$pkg" || fail "apk add $PKG"
-  wget -q -O /tmp/pk/podkop.apk "$REL/podkop-$PODKOP_VERSION-r1.apk"
-  apk add -q --allow-untrusted /tmp/pk/podkop.apk || fail "apk add podkop"
+  retry apk update -q || fail "apk update"
+  retry apk add -q --allow-untrusted "$pkg" || fail "apk add $PKG"
+  retry wget -q -O /tmp/pk/podkop.apk "$REL/podkop-$PODKOP_VERSION-r1.apk" || fail "download of podkop"
+  retry apk add -q --allow-untrusted /tmp/pk/podkop.apk || fail "apk add podkop"
   apk list -I 2>/dev/null | grep -E '^(podkop|sing-box)' || true
 else
   pkg=$(ls /pkgs/${PKG}_*.ipk 2>/dev/null | head -1); [ -n "$pkg" ] || fail "no $PKG .ipk in /pkgs"
-  opkg update >/dev/null
-  opkg install "$pkg" >/tmp/pk/opkg.log 2>&1 || { cat /tmp/pk/opkg.log; fail "opkg install $PKG"; }
-  wget -q -O /tmp/pk/podkop.ipk "$REL/podkop-v$PODKOP_VERSION-r1-all.ipk"
-  opkg install /tmp/pk/podkop.ipk >/tmp/pk/opkg.log 2>&1 || { cat /tmp/pk/opkg.log; fail "opkg install podkop"; }
+  retry opkg update >/dev/null 2>&1 || fail "opkg update"
+  retry opkg install "$pkg" >/tmp/pk/opkg.log 2>&1 || { cat /tmp/pk/opkg.log; fail "opkg install $PKG"; }
+  retry wget -q -O /tmp/pk/podkop.ipk "$REL/podkop-v$PODKOP_VERSION-r1-all.ipk" || fail "download of podkop"
+  retry opkg install /tmp/pk/podkop.ipk >/tmp/pk/opkg.log 2>&1 || { cat /tmp/pk/opkg.log; fail "opkg install podkop"; }
   opkg list-installed | grep -E '^(podkop|sing-box)' || true
 fi
 
@@ -56,6 +66,38 @@ case "$v" in
   s=0; sing-box tools decode-link --compact "$(echo "$L" | sed 's/&mode=/\&flow=xtls-rprx-vision\&mode=/')" >/tmp/pk/bad.out 2>/tmp/pk/bad.err || s=$?
   [ "$s" = 2 ] && [ ! -s /tmp/pk/bad.out ] && grep -q '^error: ' /tmp/pk/bad.err || fail "decode-link: bad link, status $s"
   echo "features, xhttp and decode-link OK"
+  # r13: every kind of link the build has, each built before it is printed; the options by
+  # path and what a link may not set; the switches of the liveness probe and of the
+  # fingerprint fallback
+  # (the name r13 adds to the features line is tls.utls-fallback; the links a build reads
+  # are not in that line: the command itself says what it does not read)
+  if sing-box version | grep -q '^Features: .*[ ,]tls\.utls-fallback\(,\|$\)'; then
+    for l in 'ss://MjAyMi1ibGFrZTMtYWVzLTI1Ni1nY206ZG1DbHkvWmgxNVd3OStzK0dGWGlGVElrcHc3Yy9xQ0lTYUJyYWk3V2hoWT0@203.0.113.20:8388#s' \
+             'hysteria2://password@203.0.113.20:443,5000-6000/?sni=e.example.com&obfs=salamander&obfs-password=x#h' \
+             'tuic://6f1c9a0e-3b52-4c1e-9a55-2d4a1b0f7c11:password@203.0.113.20:443?congestion_control=bbr&alpn=h3#t' \
+             'socks5://user:pass@203.0.113.20:1080#k' \
+             'vless://6f1c9a0e-3b52-4c1e-9a55-2d4a1b0f7c11@203.0.113.20:443?security=tls&sni=e.example.com&type=ws&sb.tls.fragment=1&sb.multiplex.enabled=1#v'; do
+      o=$(echo "$l" | sing-box tools decode-link --compact 2>/tmp/pk/dl.err) || { cat /tmp/pk/dl.err; fail "decode-link: $(echo "$l" | cut -d: -f1)"; }
+      printf '{"outbounds": [%s]}\n' "$o" > /tmp/pk/link.json
+      sing-box check -c /tmp/pk/link.json || fail "decoded $(echo "$l" | cut -d: -f1) outbound does not pass check"
+    done
+    V='vmess://6f1c9a0e-3b52-4c1e-9a55-2d4a1b0f7c11@203.0.113.20:443?type=ws&security=tls&sni=e.example.com#m'
+    s=0; echo "$V" | sing-box tools decode-link --compact >/tmp/pk/vm.out 2>/tmp/pk/vm.err || s=$?
+    if [ "$PKG" = podkop-engine-full ]; then
+      [ "$s" = 0 ] || { cat /tmp/pk/vm.err; fail "full: vmess link, status $s"; }
+    else
+      [ "$s" = 2 ] && [ ! -s /tmp/pk/vm.out ] && grep -q 'install podkop-engine-full' /tmp/pk/vm.err || fail "main: vmess link, status $s"
+    fi
+    # before the "#": what follows it is the name of the link
+    s=0; echo "$V" | sed 's/^vmess/vless/; s/#/\&sb.detour=direct#/' | sing-box tools decode-link --compact >/tmp/pk/deny.out 2>/tmp/pk/deny.err || s=$?
+    [ "$s" = 2 ] && [ ! -s /tmp/pk/deny.out ] && grep -q 'not for a link to set' /tmp/pk/deny.err || fail "decode-link: sb.detour, status $s"
+    for o in liveness utls_fallback utls_fallback_order; do
+      uci -q get sing-box.main.$o >/dev/null || fail "/etc/config/sing-box has no option $o"
+    done
+    sh -n /usr/libexec/podkop-engine/failsafe || fail "failsafe script"
+    grep -q 'SING_BOX_UTLS_FALLBACK' /etc/init.d/sing-box || fail "the init script does not pass the fingerprint fallback"
+    echo "r13: links of every kind, option paths, switches OK"
+  fi
   ;;
 esac
 

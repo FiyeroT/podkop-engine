@@ -1,7 +1,8 @@
-From f6e1b6205f43bb73193e7d0741acc936f808a5e7 Mon Sep 17 00:00:00 2001
+From e1e9f63e4ceb8558b6695655cbdc2c1734eec2fa Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Tue, 6 Oct 2026 23:52:34 +0300
-Subject: [PATCH 69/88] xhttp: Close resets the transport instead of ending it
+Subject: [PATCH 069/106] xhttp: Close resets the transport instead of ending
+ it
 
 Client.Close marked its pools closed for good, and every dial after it failed with "use
 of closed network connection". The outbounds call Close of their transport on every

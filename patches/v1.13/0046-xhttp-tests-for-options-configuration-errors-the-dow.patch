@@ -1,7 +1,7 @@
-From 6f612f47a85bf2cb405aca945cb89ed138cf20b9 Mon Sep 17 00:00:00 2001
+From 75fc804aeeb6a1ee49ce329fc31e23e22ff0e0ba Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Mon, 5 Oct 2026 11:16:22 +0300
-Subject: [PATCH 46/86] xhttp: tests for options, configuration errors, the
+Subject: [PATCH 046/104] xhttp: tests for options, configuration errors, the
  download leg and HTTP/3; refuse VLESS flow over xhttp
 
 ---

@@ -1,7 +1,7 @@
-From c89d4587dc22b6668e88061eb169ae4d98a1a153 Mon Sep 17 00:00:00 2001
+From 6e51f01070e9ba4c1907244c094e555e419d11ba Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Sun, 4 Oct 2026 08:27:02 +0300
-Subject: [PATCH 37/88] urltest: fallbacks, taken in their order while no
+Subject: [PATCH 037/106] urltest: fallbacks, taken in their order while no
  outbound answers
 
 A urltest group had no way to say "these only when the others are down":

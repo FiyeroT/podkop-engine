@@ -1,7 +1,7 @@
-From b1f5404d8aee463cbee9672f4c7948b08e9912f3 Mon Sep 17 00:00:00 2001
+From 3d16cf548f7f3a9a2556e6372b236ef73a8b8e56 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Tue, 6 Oct 2026 23:37:27 +0300
-Subject: [PATCH 88/88] rule-set: report how the recovered hook ended
+Subject: [PATCH 088/106] rule-set: report how the recovered hook ended
 
 Only the start of the hook command was checked and its exit status was dropped, so a
 command that failed, or that the shell could not find, left "hook started" as the only

@@ -1,8 +1,8 @@
-From da5eed926715358b5c6457b19c2fc43e9f7c29da Mon Sep 17 00:00:00 2001
+From 6065197009ad9496393ab3aeb743bfa0deba9e63 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Tue, 6 Oct 2026 23:36:00 +0300
-Subject: [PATCH 74/86] dns: forget the state of the provider fallback of every
- server on a network reset
+Subject: [PATCH 074/104] dns: forget the state of the provider fallback of
+ every server on a network reset
 
 A network reset made the fallback read the provider's servers again and nothing else.
 What each server had learned on the old network stayed: the minute without the fallback

@@ -31,8 +31,11 @@ for LINE in "$@"; do
   # NaiveProxy in podkop-engine-full: the pkgarchs of naive.pkgarchs (sdk-build.sh fails a
   # build where it is listed but missing), every other one of this release has none
   full_arches=$(ls "$dir"/podkop-engine-full_*.[ai]pk 2>/dev/null | sed 's/.*_openwrt_\(.*\)\.[ai]pk$/\1/' | sort -u)
-  naive_yes=$(for a in $full_arches; do grep -qx "$a" openwrt/podkop-engine/naive.pkgarchs && printf '`%s` ' "$a"; done)
-  naive_no=$(for a in $full_arches; do grep -qx "$a" openwrt/podkop-engine/naive.pkgarchs || printf '`%s` ' "$a"; done)
+  # an if, not "grep && printf": the status of a loop is that of its last command, and an
+  # arch missing from the list as the last one ended the script under "set -e" with no message
+  [ -r openwrt/podkop-engine/naive.pkgarchs ] || { echo "openwrt/podkop-engine/naive.pkgarchs is missing" >&2; exit 1; }
+  naive_yes=$(for a in $full_arches; do if grep -qx "$a" openwrt/podkop-engine/naive.pkgarchs; then printf '`%s` ' "$a"; fi; done)
+  naive_no=$(for a in $full_arches; do if ! grep -qx "$a" openwrt/podkop-engine/naive.pkgarchs; then printf '`%s` ' "$a"; fi; done)
   arches=$(ls "$dir"/podkop-engine_*.ipk "$dir"/podkop-engine_*.apk | sed 's/.*_openwrt_\(.*\)\.[ai]pk$/\1/' | sort -u | tr '\n' ' ')
   patches=$(for pf in "patches/v$LINE"/*.patch; do printf -- '- `%s` %s\n' "$(basename "$pf" | cut -c1-4)" "$(awk '/^Subject: /{s=$0; while ((getline l) > 0 && l ~ /^ /) s = s l; sub(/^Subject: \[PATCH[^]]*\] /, "", s); print s; exit}' "$pf")"; done)
   f=podkop-engine_${v}-r${r}_openwrt

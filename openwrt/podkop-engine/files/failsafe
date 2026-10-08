@@ -8,8 +8,14 @@
 # podkop is started again by hand or by a reboot once the cause is fixed.
 # procd gives up after 6 crashes with less than 10 minutes between them (respawn 600 5 5
 # in /etc/init.d/sing-box); crashes further apart are restarted each time.
+# The other way to lose DNS, a sing-box that runs and answers nothing, is the business of
+# the liveness probe below.
 
 FIFO=/var/run/podkop-engine.failsafe
+# left by the liveness probe when it kills sing-box: "<pid> <time> <seconds without an answer>"
+MARK=/var/run/podkop-engine.liveness
+# what the failsafe last stopped podkop for: the system log is in RAM and is lost at a reboot
+LAST=/etc/sing-box/failsafe.last
 main=$$
 
 # kernel OOM kills since boot; the ring buffer of dmesg rotates, this counter does not
@@ -37,6 +43,110 @@ mkfifo "$FIFO" || exit 1
 	done
 ) > "$FIFO" &
 
+# The liveness probe. procd does not restart a sing-box that runs but answers nothing (a
+# deadlock, a stall), and dnsmasq keeps sending every query to it: no DNS, as after a
+# crash loop. Every PROBE_INTERVAL seconds the probe asks the DNS inbound of podkop
+# (127.0.0.42) for podkop's test name, which sing-box answers by itself with a FakeIP
+# address, no server asked. Any answer counts. After PROBE_FAILURES queries in a row
+# without one (49 to 69 s of silence) sing-box is killed; procd starts it again, and the
+# kill counts as a crash above. The probe is armed by an answer from the same process: a
+# sing-box that never answered (another configuration, still starting) is left alone.
+# So is one that shares the CPU with `podkop list_update`.
+# Off: uci set sing-box.main.liveness=0; uci commit sing-box; service podkop-engine restart
+PROBE_INTERVAL=20
+PROBE_TIMEOUT=3
+PROBE_FAILURES=3
+PROBE_NAME=fakeip.podkop.fyi
+PROBE_SERVER=127.0.0.42
+
+# the sing-box that procd runs: `sing-box check` and the like are sing-box processes too
+box_pid() {
+	ubus call service list '{"name":"sing-box"}' 2>/dev/null |
+		jsonfilter -e '@["sing-box"]["instances"]["sing-box.main"]["pid"]' 2>/dev/null
+}
+
+# 0: an answer came (an error answer too), 1: none, 2: could not ask
+probe() {
+	if command -v dig >/dev/null 2>&1; then
+		dig +short +timeout=$PROBE_TIMEOUT +tries=1 "@$PROBE_SERVER" "$PROBE_NAME" >/dev/null 2>&1
+		case $? in
+		0) return 0 ;;
+		9) return 1 ;;
+		*) return 2 ;;
+		esac
+	fi
+	answer=$(nslookup -timeout=$PROBE_TIMEOUT -retry=1 "$PROBE_NAME" "$PROBE_SERVER" 2>&1) && return 0
+	case "$answer" in
+	*'timed out'* | *'no servers could be reached'*) return 1 ;;
+	*"can't find"* | *NXDOMAIN* | *SERVFAIL* | *REFUSED*) return 0 ;;
+	*) return 2 ;;
+	esac
+}
+
+lists_updating() {
+	pid=$(cat /var/run/podkop_list_update.pid 2>/dev/null)
+	[ -n "$pid" ] && [ -d "/proc/$pid" ] && return 0
+	# started by cron or by hand: no PID file
+	pgrep -f 'podkop list_updat[e]' >/dev/null 2>&1
+}
+
+if [ "$(uci -q get sing-box.main.liveness)" != 0 ]; then
+	(
+		armed=""   # the PID that has answered
+		fails=0
+		since=0
+		while kill -0 "$main" 2>/dev/null; do
+			waited=0
+			while [ "$waited" -lt "$PROBE_INTERVAL" ] && kill -0 "$main" 2>/dev/null; do
+				sleep 5
+				waited=$((waited + 5))
+			done
+			# asked every time: podkop may be installed after this service has started
+			[ -x /usr/bin/podkop ] || { armed=""; fails=0; continue; }
+			box=$(box_pid)
+			if [ -z "$box" ] || [ "$box" != "$armed" ]; then
+				fails=0
+			fi
+			[ -n "$box" ] || { armed=""; continue; }
+			if lists_updating; then
+				fails=0
+				continue
+			fi
+			asked=$(date +%s)
+			probe
+			case $? in
+			0)
+				armed=$box
+				fails=0
+				;;
+			1)
+				[ "$box" = "$armed" ] || continue
+				[ "$fails" -eq 0 ] && since=$asked
+				fails=$((fails + 1))
+				[ "$fails" -ge "$PROBE_FAILURES" ] || continue
+				silent=$(($(date +%s) - since))
+				fails=0
+				armed=""
+				# not a process that took the number of one that has just exited
+				[ "$(box_pid)" = "$box" ] || continue
+				echo "$box $(date +%s) $silent" > "$MARK"
+				logger -t podkop-engine "sing-box (pid $box) has not answered DNS on $PROBE_SERVER for $silent s; killing it so that procd starts it again"
+				kill -KILL "$box" 2>/dev/null
+				;;
+			esac
+		done
+	) &
+fi
+
+# seconds without an answer after which the liveness probe has just killed sing-box, if it has
+liveness_kill() {
+	[ -f "$MARK" ] || return 1
+	read -r _ killed silent < "$MARK"
+	rm -f "$MARK"
+	[ $(($(date +%s) - ${killed:-0})) -le 60 ] || return 1
+	echo "${silent:-?}"
+}
+
 # memory when sing-box went down, so that a report from a router shows whether memory ran
 # out there (Wi-Fi drivers, other services) or sing-box grew: MemTotal/MemAvailable, the
 # RSS the kernel gave for sing-box when it killed it, /tmp (tmpfs, it is RAM), the cache
@@ -62,27 +172,46 @@ oom_new() {
 	r=$?; oom_seen=$n; return $r
 }
 
-loop_oom=""   # an OOM kill happened in the current crash loop
+loop_oom=""    # an OOM kill happened in the current crash loop
+loop_mute=""   # the liveness probe killed sing-box in the current crash loop
 last_crash=0
 while read -r event; do
 	case "$event" in
 	*'"instance.respawn"'*'"service":"sing-box"'*)
 		now=$(date +%s)
-		[ $((now - last_crash)) -gt 600 ] && loop_oom=""   # a new crash loop
+		[ $((now - last_crash)) -gt 600 ] && loop_oom="" && loop_mute=""   # a new crash loop
 		last_crash=$now
 		why=""; oom_last=""
-		oom_new && why=" (killed by the kernel OOM-killer)" && loop_oom=1 && oom_last=1
+		if silent=$(liveness_kill); then
+			why=" (killed by the liveness probe: no DNS answer for $silent s)"
+			loop_mute=1
+			oom_new   # keep the count of OOM kills current
+		elif oom_new; then
+			why=" (killed by the kernel OOM-killer)"
+			loop_oom=1; oom_last=1
+		fi
 		logger -t podkop-engine "sing-box exited unexpectedly$why, procd restarts it; $(memory_state)"
 		;;
 	*'"instance.fail"'*'"service":"sing-box"'*)
 		oom_last=""
-		oom_new && loop_oom=1 && oom_last=1   # the last crash is reported as instance.fail, not respawn
+		# the last crash is reported as instance.fail, not respawn
+		if liveness_kill >/dev/null; then
+			loop_mute=1
+			oom_new
+		elif oom_new; then
+			loop_oom=1; oom_last=1
+		fi
 		err=$(last_error)
-		logger -t podkop-engine "sing-box went down for good; $(memory_state)"
+		state="sing-box went down for good; $(memory_state)"
+		logger -t podkop-engine "$state"
+		[ -n "$loop_mute" ] && err="killed by the liveness probe (it ran and did not answer DNS)${err:+; $err}"
 		[ -n "$loop_oom" ] && err="killed by the kernel OOM-killer${err:+; $err}"
-		loop_oom=""; last_crash=0
-		logger -t podkop-engine "sing-box keeps crashing and procd stopped restarting it; stopping podkop so that DNS works without it${err:+. Last error: $err}"
+		loop_oom=""; loop_mute=""; last_crash=0
+		cause="sing-box keeps crashing and procd stopped restarting it; stopping podkop so that DNS works without it${err:+. Last error: $err}"
+		logger -t podkop-engine "$cause"
 		[ -x /etc/init.d/podkop ] && /etc/init.d/podkop stop
+		# after DNS is back, and never in its way: the overlay may be full or read-only
+		{ date '+%Y-%m-%d %H:%M:%S %z'; echo "$state"; echo "$cause"; } > "$LAST" 2>/dev/null || true
 		;;
 	esac
 done < "$FIFO"

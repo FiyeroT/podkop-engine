@@ -1,7 +1,7 @@
-From 27a0552cdfe4d6a5220d82415e71f549a1dbdf37 Mon Sep 17 00:00:00 2001
+From 705b9978430a93395e9ae9e2f8cd240fc0b8289f Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Tue, 6 Oct 2026 04:48:03 +0300
-Subject: [PATCH 65/88] tools decode-link: fixes from the review
+Subject: [PATCH 065/106] tools decode-link: fixes from the review
 
 What Xray accepts and sing-box refuses is now settled when the link is read,
 not when the outbound starts: fingerprints (any case, Chrome's by default,

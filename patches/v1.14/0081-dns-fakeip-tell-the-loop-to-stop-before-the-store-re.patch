@@ -1,7 +1,7 @@
-From df97e45890e0fd34b153298f606bb883fd11c160 Mon Sep 17 00:00:00 2001
+From bf8697ec70ed15662d6b956cf7abb249d605ef9d Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Tue, 6 Oct 2026 23:40:17 +0300
-Subject: [PATCH 81/88] dns/fakeip: tell the loop to stop before the store
+Subject: [PATCH 081/106] dns/fakeip: tell the loop to stop before the store
  refuses saves
 
 Close set closed, released the lock and only then closed the channel that stops the

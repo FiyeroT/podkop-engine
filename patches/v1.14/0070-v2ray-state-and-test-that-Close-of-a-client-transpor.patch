@@ -1,8 +1,8 @@
-From 21497f911c14431e6ba2169211ad472a9794d661 Mon Sep 17 00:00:00 2001
+From 51cd6bbec35eee8e939d156930807c8982ac72a0 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Tue, 6 Oct 2026 23:53:23 +0300
-Subject: [PATCH 70/88] v2ray: state and test that Close of a client transport
- is a reset
+Subject: [PATCH 070/106] v2ray: state and test that Close of a client
+ transport is a reset
 
 The outbounds call Close of their transport from InterfaceUpdated on every change of the
 network and dial through it again afterwards. Every transport has to allow that, yet the

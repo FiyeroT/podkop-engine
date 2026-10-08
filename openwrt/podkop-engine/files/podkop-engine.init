@@ -1,8 +1,9 @@
 #!/bin/sh /etc/rc.common
-# podkop-engine: failsafe for sing-box crash loops
+# podkop-engine: failsafe for sing-box crash loops and the liveness probe
 # (see /usr/libexec/podkop-engine/failsafe). It runs whether podkop is installed yet or
 # not: podkop may be installed later, and nothing would start this service then.
 # Off: uci set sing-box.main.failsafe=0; uci commit sing-box; service podkop-engine restart
+# (the probe alone: sing-box.main.liveness=0)
 
 USE_PROCD=1
 START=95

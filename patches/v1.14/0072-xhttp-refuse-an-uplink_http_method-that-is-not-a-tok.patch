@@ -1,7 +1,8 @@
-From aa73b3b518fbe0dc39983ccda44bfde04ab848a2 Mon Sep 17 00:00:00 2001
+From 520209adf5e6d69d442747e5cc3a48fe96962afb Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Tue, 6 Oct 2026 23:55:40 +0300
-Subject: [PATCH 72/88] xhttp: refuse an uplink_http_method that is not a token
+Subject: [PATCH 072/106] xhttp: refuse an uplink_http_method that is not a
+ token
 
 The method was only put in upper case. A value with a space or another byte a method
 cannot have passed "sing-box check" and the decoder of share links, and failed at the

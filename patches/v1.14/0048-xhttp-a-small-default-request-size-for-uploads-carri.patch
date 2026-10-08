@@ -1,8 +1,8 @@
-From acf623fa1add5c440456402833e904f17e38de3c Mon Sep 17 00:00:00 2001
+From a4dea89a2648cda782af24a7d5f6254132dbf3d6 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Mon, 5 Oct 2026 11:40:39 +0300
-Subject: [PATCH 48/88] xhttp: a small default request size for uploads carried
- in headers or cookies
+Subject: [PATCH 048/106] xhttp: a small default request size for uploads
+ carried in headers or cookies
 
 ---
  transport/v2rayxhttp/config.go      | 8 ++++++++

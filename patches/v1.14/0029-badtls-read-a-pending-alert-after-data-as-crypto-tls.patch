@@ -1,8 +1,8 @@
-From ab8136d49730699d86bd729b7a349fe709ca1d26 Mon Sep 17 00:00:00 2001
+From 9378b8d33898e42e43cfc906a3ce746577617342 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Sat, 3 Oct 2026 20:23:36 +0300
-Subject: [PATCH 29/88] badtls: read a pending alert after data, as crypto/tls
- does
+Subject: [PATCH 029/106] badtls: read a pending alert after data, as
+ crypto/tls does
 
 The check meant to read an alert record that follows the data compared the
 length of the decrypted input with zero and above zero at once, so it never ran.

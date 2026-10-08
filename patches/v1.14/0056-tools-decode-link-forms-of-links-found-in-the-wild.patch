@@ -1,7 +1,7 @@
-From 553708d5deadc612b24db070c0ba12198883496d Mon Sep 17 00:00:00 2001
+From ca785e136c57772782abc194bd630a2c96af2c10 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Mon, 5 Oct 2026 16:53:40 +0300
-Subject: [PATCH 56/88] tools decode-link: forms of links found in the wild
+Subject: [PATCH 056/106] tools decode-link: forms of links found in the wild
 
 Checked against 257 example links of panels, clients and public lists:
 - parameter names in any case, other spellings of the insecure flag, the

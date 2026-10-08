@@ -1,7 +1,7 @@
-From 07c9af38d487938f086e797e11798e24f1e5ea6f Mon Sep 17 00:00:00 2001
+From f689b190d71886f3062ce3ac5990dcaf11269f9c Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Sun, 4 Oct 2026 08:35:42 +0300
-Subject: [PATCH 39/88] Backport: close interrupted connections outside the
+Subject: [PATCH 039/106] Backport: close interrupted connections outside the
  group lock (upstream d2cf9747d)
 
 From the stable branch after 1.14.2. Interrupt closed every connection while

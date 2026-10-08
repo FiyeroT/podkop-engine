@@ -50,7 +50,14 @@ cd /builder
 log "feeds"
 grep -E '^src-git(-full)? (base|packages) ' feeds.conf.default | sed 's/^src-git-full /src-git /' > feeds.conf
 cat feeds.conf
-./scripts/feeds update base packages >/dev/null
+# git.openwrt.org refuses a connection now and then, and a feed that could not be cloned
+# fails the update: ask again a few times
+n=0
+until ./scripts/feeds update base packages >/dev/null; do
+  n=$((n + 1)); [ $n -lt 5 ] || { echo "feeds update failed $n times" >&2; exit 1; }
+  echo "feeds update failed, once more in 20 s" >&2
+  sleep 20
+done
 
 # 2. Go: штатный lang/golang заменяется закреплённым (versions.env) — в 24.10 штатный
 #    Go 1.23 не собирает sing-box 1.13+, а одна версия Go на все сборки проще сопровождать.
@@ -59,7 +66,11 @@ tmp=$(mktemp -d)
 git -C "$tmp" init -q
 git -C "$tmp" remote add origin "$GOLANG_FEED_REPO"
 git -C "$tmp" sparse-checkout set lang/golang
-git -C "$tmp" fetch -q --depth 1 --filter=blob:none origin "$GOLANG_FEED_COMMIT"
+n=0
+until git -C "$tmp" fetch -q --depth 1 --filter=blob:none origin "$GOLANG_FEED_COMMIT"; do
+  n=$((n + 1)); [ $n -lt 5 ] || { echo "fetch of lang/golang failed $n times" >&2; exit 1; }
+  sleep 20
+done
 git -C "$tmp" checkout -q FETCH_HEAD
 rm -rf feeds/packages/lang/golang
 cp -a "$tmp/lang/golang" feeds/packages/lang/golang

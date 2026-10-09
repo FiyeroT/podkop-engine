@@ -738,6 +738,12 @@ Features: urltest.fallbacks,urltest.download_url,transport.xhttp,tools.decode-li
 - Отпечаток из списка, которому сервер отвечает, но отказом (нет нужного расширения для ECH,
   не та версия TLS), тоже покидается, пока ни разу не сработал. Рукопожатие, прождавшее весь
   свой таймаут, переводит на следующий отпечаток, но новых попыток на этом соединении уже нет.
+- **У выхода с REALITY отпечатки без ключа X25519MLKEM768 (`edge`, `ios`, `qq`) пробуются
+  наравне с остальными**: сервер на Xray старше 26.9.8 их принимает. Сервер на 26.9.8 и новее
+  отвечает на такой ClientHello как постороннему, сертификатом сайта-прикрытия; автосмена
+  получает отказ (на стенде через 0,05–0,08 с) и идёт дальше по списку. Такой отказ снимает
+  отпечаток и тогда, когда он на этом пути уже работал: так выглядит сервер, который обновили.
+  Отпечаток, заданный в конфиге, из-за отказа сервера не покидается никогда.
 - На одно соединение — не больше четырёх рукопожатий.
 
 **По умолчанию автосмена выключена.** Включает её конфигурация — раздел `experimental` в
@@ -762,8 +768,8 @@ podkop узнаёт по имени `tls.utls-fallback` в строке `Feature
 Порядок списка по умолчанию такой: сначала два отпечатка, в ClientHello которых нет расширения
 ECH (`safari`, `randomized`); затем `edge` — его ClientHello маленький (517 байт одним сегментом,
 без ключа X25519MLKEM768), на случай пути, который не пропускает большие; затем `firefox` и
-`chrome`. У выхода REALITY `edge` из списка не берётся, как и любой отпечаток без этого ключа
-(см. ограничения ниже): там перебор идёт по `safari`, `randomized`, `firefox`, `chrome`.
+`chrome`. Список один и для обычного TLS, и для REALITY. С REALITY `edge` сработает только с
+сервером на Xray старше 26.9.8; с более новым это одно лишнее соединение на проход списка.
 
 Других выключателей у пакета нет: в `/etc/config/sing-box` параметров автосмены нет, и
 init-скрипт для неё ничего не передаёт. Нет раздела или в нём `"enabled": false` — автосмены
@@ -784,13 +790,13 @@ tls: ClientHello to 203.0.113.5:443 unanswered with fingerprint chrome, trying i
 tls: ClientHello to 203.0.113.5:443 unanswered with fingerprint chrome, retrying with safari
 tls: fingerprint safari is answered where chrome was not; it is used from now on
 tls: fingerprint chrome is answered after its ClientHello was not: a loss on the way, or something that does not choose by fingerprint; the fallback rests for 30s
-tls: ClientHello to 203.0.113.5:443 unanswered with all fingerprints (chrome, safari, randomized, firefox); the fallback rests for 30s, safari is used: it worked here last
-tls: no fingerprint of chrome, safari, randomized, firefox got through to 203.0.113.5:443 (2 unanswered, 2 refused; firefox: …); the fallback rests for 30s, chrome is used as configured
-tls: the handshake with 203.0.113.5:443 failed with fingerprint safari (…), retrying with randomized
+tls: ClientHello to 203.0.113.5:443 unanswered with all fingerprints (chrome, safari, randomized, edge, firefox); the fallback rests for 30s, safari is used: it worked here last
+tls: the handshake with 203.0.113.5:443 failed with fingerprint edge (reality verification failed, possibly because of the uTLS fingerprint edge: REALITY servers since Xray-core v26.9.8 reject a Client Hello without an X25519MLKEM768 key share), retrying with firefox
+tls: no fingerprint of chrome, safari, randomized, edge, firefox got through to 203.0.113.5:443 (4 unanswered, 1 refused); the fallback rests for 30s, chrome is used as configured
 ```
 
-В скобках — отпечатки этого выхода: заданный и те из списка, что ему подходят. У выхода с
-REALITY и списком по умолчанию их четыре, как в примере, у выхода с обычным TLS — пять, с `edge`.
+В скобках — отпечатки этого выхода: заданный и список (у выхода с REALITY — без `android` и
+`360`).
 
 Ограничения:
 
@@ -801,8 +807,9 @@ REALITY и списком по умолчанию их четыре, как в �
   соединения или пропускает рукопожатие и режет соединение позже, автосмена не срабатывает;
 - не действует вместе с kTLS и с ECH, конфигурация которого спрашивается у DNS (обе линии); с
   ECH, заданным списком, действует;
-- для REALITY из списка не берутся `edge`, `ios`, `qq`, `android`, `360` (REALITY с ними не
-  работает или работает только со старыми серверами);
+- для REALITY из списка не берутся `android` и `360`: их ClientHello — TLS 1.2, с REALITY они
+  не работают. `edge`, `ios`, `qq` берутся, но сработать могут только с сервером на Xray
+  старше 26.9.8;
 - первое соединение через заблокированный отпечаток дольше обычного на два ожидания (на
   стенде 1,3 с, один раз на адрес);
 - путь, на котором соединение не проходит по другой причине (чёрная дыра PMTU, сервер принял
@@ -814,8 +821,10 @@ REALITY и списком по умолчанию их четыре, как в �
   отпечатка на следующий из списка, хотя дело не в нём: серверу это безразлично, но в журнале
   будет строка `is used from now on`.
 
-Проверено на стенде: сервер Xray (TLS и REALITY) за правилами nftables, отбрасывающими
+Проверено на стенде: сервер Xray 26.9.9 (TLS и REALITY) за правилами nftables, отбрасывающими
 ClientHello по отпечатку, и собранные бинарники обеих линий; результаты линий совпадают.
+Строки про REALITY и большой ClientHello сняты с двумя серверами: Xray 26.6.27 (принимает
+`edge`) и 26.9.9 (не принимает).
 Запросы — через mixed-вход sing-box, каждый своим соединением; таймаут клиента 6 с. Отпечатки
 стенд различает по длине списка шифров в ClientHello. У `edge` она та же, что у `chrome`, так что
 в строках, где отброшен `chrome`, отброшен и `edge`; у `randomized` она случайная и в части
@@ -839,7 +848,10 @@ ClientHello по отпечатку, и собранные бинарники о
 | `chrome`; автосмена включена разделом, затем конфигурация перечитана (SIGHUP) уже без раздела | — | до перечитывания — 1,32 с и 0,00 с; после него не проходит ни один из трёх: автосмены больше нет |
 | любой ClientHello длиннее 1000 байт (все отпечатки с ключом X25519MLKEM768), выход с TLS | — | первый запрос не проходит (2,6 с, четыре рукопожатия), следующие — 0,00–0,01 с; дальше `edge` |
 | то же, в списке нет `edge` | — | не проходит ни один из шести |
-| то же, выход с REALITY | — | не проходит ни один из шести: `edge` для REALITY не берётся |
+| то же, выход с REALITY, сервер на Xray 26.6.27 | — | первый запрос не проходит (2,6 с, четыре рукопожатия), следующие — 0,04–0,06 с; дальше `edge` |
+| то же, выход с REALITY, сервер на Xray 26.9.9 | — | не проходит ни один из шести: `edge` сервер отвергает за 0,05–0,08 с, остальные без ответа, автосмена отдыхает |
+| то же, выход с REALITY; на 11-й секунде сервер обновлён с 26.6.27 до 26.9.9 | — | до обновления запросы идут через `edge`; после него `edge` отвергнут и снят, остальные без ответа, автосмена отдыхает 30 с, потом 60 с — запросы не проходят: пройти нечему |
+| то же, но с обновлением сервера путь перестаёт отбрасывать ClientHello | — | до обновления — через `edge`; после него `edge` отвергнут, и тем же соединением взят `firefox`: из 30 запросов не прошёл только первый |
 
 **Утечки и гонки.** Те же сценарии прогнаны сборками с детектором гонок Go на обеих линиях:
 сообщений о гонках нет. После 30 000 запросов через выход с автосменой на пути, отбрасывающем

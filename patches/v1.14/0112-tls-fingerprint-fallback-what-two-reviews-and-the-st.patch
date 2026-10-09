@@ -1,6 +1,6 @@
-From d27b2cf223dc013893fbc290cff88d96466ba38e Mon Sep 17 00:00:00 2001
+From 6bf1a7358ff097028d6058f7d11fad72270f6b82 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
-Date: Fri, 9 Oct 2026 12:55:10 +0300
+Date: Fri, 9 Oct 2026 16:15:04 +0300
 Subject: [PATCH 112/118] tls: fingerprint fallback, what two reviews and the
  stands showed
 
@@ -15,11 +15,30 @@ where the instances of a process share the registry (1.13).
 The default list is safari, randomized, edge, firefox, chrome. First the
 two whose ClientHello carries no ECH extension; then edge, whose
 ClientHello is small (517 bytes, no X25519MLKEM768 key share), for a path
-that drops the large ones. A REALITY client leaves edge out, as any
-fingerprint without that key share. On the stand, on a path to a TLS
-server that drops every ClientHello over 1000 bytes, the first request
-fails after 2.6 s and four handshakes and the next ones pass with edge;
-with the list without edge none of six passes.
+that drops the large ones. On the stand, on a path to a TLS server that
+drops every ClientHello over 1000 bytes, the first request fails after
+2.6 s and four handshakes and the next ones pass with edge; with the list
+without edge none of six passes.
+
+REALITY. A REALITY client goes through the same list, without android
+and 360 only (a ClientHello of TLS 1.2, which REALITY cannot work with).
+The fingerprints without the X25519MLKEM768 key share (edge, ios, qq) are
+tried as the rest: a server older than Xray-core v26.9.8 takes them, and
+there are many of those. A newer one answers such a ClientHello as a
+stranger's, with the certificate of its target. That failure names the
+fingerprint and is told from the others by its type, and the fallback
+goes on with the next fingerprint, also when the one refused has worked
+on the path: that is a server updated meanwhile, and the path would
+otherwise stay on a fingerprint the server never takes again. Any other
+failure of a fingerprint that has worked, and any failure of the
+configured one, is the server's business as before. On the stand (every
+ClientHello over 1000 bytes dropped): with Xray 26.6.27 the first request
+fails after 2.6 s and the next ones pass with edge; with 26.9.9 edge is
+refused in 0.05 s and none of six passes, as nothing can; with the
+server updated from the one to the other while edge is in use, edge is
+left at the first refusal, and where the path drops nothing from then
+on, the same dial goes on with firefox and 29 requests of 30 pass (the
+one that does not is the first of the run).
 
 When to leave a fingerprint. The configured one, and one that has
 completed a handshake on the path, is left after two unanswered
@@ -71,18 +90,18 @@ configuration.
 ---
  box.go                               |   4 +
  common/tls/client.go                 |  35 +-
- common/tls/detour_test.go            | 165 ++++++++
+ common/tls/detour_test.go            | 165 ++++++
  common/tls/ech.go                    |   6 +
- common/tls/hello_watch.go            |  56 ++-
+ common/tls/hello_watch.go            |  56 +-
  common/tls/hello_watch_linux.go      |  19 +-
- common/tls/hello_watch_linux_test.go |  77 +++-
+ common/tls/hello_watch_linux_test.go |  77 ++-
  common/tls/ktls.go                   |   6 +
- common/tls/reality_client.go         |   4 +
+ common/tls/reality_client.go         |  57 +-
  common/tls/utls_client.go            |   6 +-
- common/tls/utls_fallback.go          | 356 +++++++++++++---
- common/tls/utls_fallback_test.go     | 585 ++++++++++++++++++++++++---
+ common/tls/utls_fallback.go          | 397 +++++++++++--
+ common/tls/utls_fallback_test.go     | 827 +++++++++++++++++++++++++--
  option/experimental.go               |  15 +
- 13 files changed, 1201 insertions(+), 133 deletions(-)
+ 13 files changed, 1514 insertions(+), 156 deletions(-)
  create mode 100644 common/tls/detour_test.go
 
 diff --git a/box.go b/box.go
@@ -658,10 +677,112 @@ index dd564f534..8f8a24a96 100644
  	ServerConfig
  	logger             logger.ContextLogger
 diff --git a/common/tls/reality_client.go b/common/tls/reality_client.go
-index cde7e5805..fe6ae681c 100644
+index cde7e5805..6e2dc451c 100644
 --- a/common/tls/reality_client.go
 +++ b/common/tls/reality_client.go
-@@ -401,3 +401,7 @@ func (c *realityClientConnWrapper) ReaderReplaceable() bool {
+@@ -50,13 +50,31 @@ type RealityClientConfig struct {
+ 	shortID   [8]byte
+ 	// the name of a uTLS fingerprint without an X25519MLKEM768 key share, otherwise empty
+ 	classicFingerprint string
++	// that fingerprint is one the fingerprint fallback has gone on to, not the configured one
++	classicFallback bool
+ }
+ 
+ // REALITY servers since Xray-core v26.9.8 (XTLS/REALITY@8cdf7bf) take a Client Hello
+ // without an X25519MLKEM768 key share for a stranger and pass it on to the target, whose
+ // certificate then fails the verification. Older servers accept such a Client Hello, so
+ // the fingerprints that carry only X25519 are not refused, but the cause is named.
+-const realityHybridKeyShareNote = "REALITY servers since Xray-core v26.9.8 reject a Client Hello without an X25519MLKEM768 key share, use chrome, firefox, safari, random or randomized"
++const (
++	realityHybridKeyShareNote = "REALITY servers since Xray-core v26.9.8 reject a Client Hello without an X25519MLKEM768 key share"
++	// what to configure in place of such a fingerprint
++	realityHybridKeyShareAdvice = ", use chrome, firefox, safari, random or randomized"
++)
++
++// realityStrangerError is the failure of a handshake with a fingerprint without the
++// X25519MLKEM768 key share that the server answered as it answers a stranger, with the
++// certificate of its target: what a server since Xray-core v26.9.8 does with every such
++// Client Hello, whatever it did before it was updated.
++type realityStrangerError struct {
++	error
++}
++
++func (e *realityStrangerError) Unwrap() error {
++	return e.error
++}
+ 
+ // checkRealityFingerprint refuses the uTLS fingerprints REALITY cannot work with and
+ // reports whether the named one lacks the X25519MLKEM768 key share.
+@@ -72,13 +90,27 @@ func checkRealityFingerprint(name string) (classic bool, err error) {
+ 	}
+ }
+ 
+-// verificationFailed is the text of a failed verification; it names the fingerprint that
+-// may be the cause.
+-func (e *RealityClientConfig) verificationFailed() string {
+-	if e.classicFingerprint == "" {
+-		return "reality verification failed"
++// verificationFailed is the error of a failed verification, cause being what the
++// handshake itself failed with, if it did. It names the fingerprint that may be the
++// cause, and what to configure in its place when it is the configured one.
++func (e *RealityClientConfig) verificationFailed(cause error) error {
++	text := "reality verification failed"
++	if e.classicFingerprint != "" {
++		text += ", possibly because of the uTLS fingerprint " + e.classicFingerprint + ": " + realityHybridKeyShareNote
++		if !e.classicFallback {
++			text += realityHybridKeyShareAdvice
++		}
+ 	}
+-	return "reality verification failed, possibly because of the uTLS fingerprint " + e.classicFingerprint + ": " + realityHybridKeyShareNote
++	var err error
++	if cause != nil {
++		err = E.Cause(cause, text)
++	} else {
++		err = E.New(text)
++	}
++	if e.classicFingerprint != "" {
++		return &realityStrangerError{err}
++	}
++	return err
+ }
+ 
+ func NewRealityClient(ctx context.Context, logger logger.ContextLogger, serverAddress string, options option.OutboundTLSOptions) (Config, error) {
+@@ -124,7 +156,7 @@ func newRealityClient(ctx context.Context, logger logger.ContextLogger, serverAd
+ 	if classicFingerprint {
+ 		realityConfig.classicFingerprint = options.UTLS.Fingerprint
+ 		if logger != nil {
+-			logger.Warn("uTLS fingerprint ", options.UTLS.Fingerprint, " carries no X25519MLKEM768 key share: ", realityHybridKeyShareNote)
++			logger.Warn("uTLS fingerprint ", options.UTLS.Fingerprint, " carries no X25519MLKEM768 key share: ", realityHybridKeyShareNote, realityHybridKeyShareAdvice)
+ 		}
+ 	}
+ 	var config Config = realityConfig
+@@ -275,7 +307,7 @@ func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn
+ 		if verifier.rejected && e.classicFingerprint != "" {
+ 			// the server passed the connection on to its target, and the certificate of
+ 			// the target is not valid here: the cause is the same as below
+-			return nil, E.Cause(err, e.verificationFailed())
++			return nil, e.verificationFailed(err)
+ 		}
+ 		return nil, err
+ 	}
+@@ -286,7 +318,7 @@ func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn
+ 
+ 	if !verifier.verified {
+ 		go realityClientFallback(e.ctx, uConn, e.uClient.ServerName(), e.uClient.id)
+-		return nil, E.New(e.verificationFailed())
++		return nil, e.verificationFailed(nil)
+ 	}
+ 
+ 	releaseHandshakeState(uConn)
+@@ -324,6 +356,7 @@ func (e *RealityClientConfig) Clone() Config {
+ 		e.publicKey,
+ 		e.shortID,
+ 		e.classicFingerprint,
++		e.classicFallback,
+ 	}
+ }
+ 
+@@ -401,3 +434,7 @@ func (c *realityClientConnWrapper) ReaderReplaceable() bool {
  func (c *realityClientConnWrapper) WriterReplaceable() bool {
  	return false
  }
@@ -691,10 +812,10 @@ index d63e47235..7835db6d6 100644
 +	return c.spoof != ""
 +}
 diff --git a/common/tls/utls_fallback.go b/common/tls/utls_fallback.go
-index 279f62739..d213d999a 100644
+index 279f62739..f77c8cffb 100644
 --- a/common/tls/utls_fallback.go
 +++ b/common/tls/utls_fallback.go
-@@ -3,30 +3,65 @@
+@@ -3,30 +3,66 @@
  package tls
  
  import (
@@ -727,7 +848,8 @@ index 279f62739..d213d999a 100644
 +	// The list of a fallback that is turned on without one. First the two whose
 +	// ClientHello carries no ECH extension; then one whose ClientHello is small (no
 +	// X25519MLKEM768 key share, a single segment), for a path that drops the large ones.
-+	// A REALITY client leaves that one out, as any fingerprint without the key share.
++	// A REALITY server older than Xray-core v26.9.8 takes that one as any other; a newer
++	// one refuses it, and the fallback goes on with the next.
 +	utlsFallbackDefaultOrder = "safari,randomized,edge,firefox,chrome"
 +	// lines remembered so as not to be repeated
 +	utlsFallbackLines = 64
@@ -761,7 +883,7 @@ index 279f62739..d213d999a 100644
  )
  
  type utlsFallbackCandidate struct {
-@@ -35,14 +70,52 @@ type utlsFallbackCandidate struct {
+@@ -35,14 +71,55 @@ type utlsFallbackCandidate struct {
  }
  
  // utlsFallbackPath is what the fallback has learned from one local address.
@@ -777,6 +899,8 @@ index 279f62739..d213d999a 100644
 +// The rests are in a row when the ClientHello that began each was among the first
 +// utlsFallbackFirst sent since the rest before it: a filter that drops one fingerprint
 +// in twenty or more does that as a rule, a loss of one ClientHello in a hundred seldom.
++// A fingerprint of the list that a REALITY server has taken and then answers as a
++// stranger's (failed) is from then on as one that has not completed a handshake here.
  type utlsFallbackPath struct {
  	local netip.Addr
  	// the candidate in use
@@ -789,7 +913,8 @@ index 279f62739..d213d999a 100644
 +	failed  int
 +	refused int
 +	// the candidates that have completed a handshake on this path, a bit each, and the
-+	// one that did last
++	// one that did last; a candidate that has been answered as a stranger's since is in
++	// neither
 +	worked uint64
 +	last   int
 +	// when the ClientHello of the candidate in use went unanswered for the first time
@@ -818,7 +943,7 @@ index 279f62739..d213d999a 100644
  }
  
  // utlsFallback is shared by a client configuration and its clones.
-@@ -50,19 +123,42 @@ type utlsFallback struct {
+@@ -50,19 +127,43 @@ type utlsFallback struct {
  	logger logger.ContextLogger
  	// the configured fingerprint first
  	candidates []utlsFallbackCandidate
@@ -861,14 +986,15 @@ index 279f62739..d213d999a 100644
 -	if utlsFallbackOrder == "" {
 +// ID configuredID), nil when it is off: turned off or not turned on (utlsFallbackList), a
 +// list with a name that is not a fingerprint, or nothing in it to go on with. For REALITY
-+// the fingerprints it does not work with, or only with older servers, are left out.
++// the fingerprints it cannot work with are left out; the ones that only older servers take
++// are tried as the rest.
 +func newUTLSFallback(ctx context.Context, logger logger.ContextLogger, configured string, configuredID utls.ClientHelloID, reality bool, spoof bool) *utlsFallback {
 +	order, source := utlsFallbackList(ctx)
 +	if order == "" {
  		return nil
  	}
  	if logger == nil {
-@@ -72,7 +168,7 @@ func newUTLSFallback(logger logger.ContextLogger, configured string, configuredI
+@@ -72,7 +173,7 @@ func newUTLSFallback(logger logger.ContextLogger, configured string, configuredI
  		configured = "chrome"
  	}
  	candidates := []utlsFallbackCandidate{{configured, configuredID}}
@@ -877,7 +1003,7 @@ index 279f62739..d213d999a 100644
  		name = strings.TrimSpace(name)
  		if name == "" {
  			continue
-@@ -80,7 +176,7 @@ func newUTLSFallback(logger logger.ContextLogger, configured string, configuredI
+@@ -80,13 +181,13 @@ func newUTLSFallback(logger logger.ContextLogger, configured string, configuredI
  		id, err := uTLSClientHelloID(name)
  		if err != nil {
  			utlsFallbackWarning.Do(func() {
@@ -886,7 +1012,15 @@ index 279f62739..d213d999a 100644
  			})
  			return nil
  		}
-@@ -97,22 +193,46 @@ func newUTLSFallback(logger logger.ContextLogger, configured string, configuredI
+ 		if reality {
+-			classic, err := checkRealityFingerprint(name)
+-			if err != nil || classic {
++			_, unsupported := checkRealityFingerprint(name)
++			if unsupported != nil {
+ 				continue
+ 			}
+ 		}
+@@ -97,22 +198,46 @@ func newUTLSFallback(logger logger.ContextLogger, configured string, configuredI
  				break
  			}
  		}
@@ -938,7 +1072,7 @@ index 279f62739..d213d999a 100644
  	for index, path := range f.paths {
  		if path.local == local {
  			// the most recently used first
-@@ -138,40 +258,130 @@ func (f *utlsFallback) names() string {
+@@ -138,40 +263,131 @@ func (f *utlsFallback) names() string {
  	return strings.Join(names, ", ")
  }
  
@@ -951,8 +1085,8 @@ index 279f62739..d213d999a 100644
 +}
 +
 +// rests puts the fallback of a path to rest for the given time, on the candidate that
-+// completed a handshake last: its connections are made as without the fallback. The
-+// caller holds the lock.
++// completed a handshake last, the configured one when none is remembered: its
++// connections are made as without the fallback. The caller holds the lock.
 +func (f *utlsFallback) rests(path *utlsFallbackPath, now time.Time, rest time.Duration) {
 +	path.restUntil = now.Add(rest)
 +	path.position = path.last
@@ -1007,8 +1141,11 @@ index 279f62739..d213d999a 100644
  // utlsFallbackDial follows one dial: fingerprintDial.
  type utlsFallbackDial struct {
  	fallback *utlsFallback
- 	// configuration returns the configuration of the dial with another fingerprint
- 	configuration func(id utls.ClientHelloID) Config
+-	// configuration returns the configuration of the dial with another fingerprint
+-	configuration func(id utls.ClientHelloID) Config
++	// configuration returns the configuration of the dial with the fingerprint of a
++	// candidate
++	configuration func(candidate utlsFallbackCandidate) Config
  	path          *utlsFallbackPath
 -	// the candidate of the last attempt
 -	position int
@@ -1042,7 +1179,7 @@ index 279f62739..d213d999a 100644
 +		d.path.sent++
 +		d.ordinal = d.path.sent
 +	}
-+	return d.configuration(f.candidates[d.position].id), d.watched
++	return d.configuration(f.candidates[d.position]), d.watched
  }
  
  func (d *utlsFallbackDial) answered() {
@@ -1081,7 +1218,7 @@ index 279f62739..d213d999a 100644
  	}
  }
  
-@@ -179,34 +389,82 @@ func (d *utlsFallbackDial) unanswered(destination M.Socksaddr) (bool, error) {
+@@ -179,43 +395,99 @@ func (d *utlsFallbackDial) unanswered(destination M.Socksaddr) (bool, error) {
  	f := d.fallback
  	f.access.Lock()
  	defer f.access.Unlock()
@@ -1122,11 +1259,11 @@ index 279f62739..d213d999a 100644
 +			return true, nil
 +		}
 +		f.advance(path)
- 	}
--	next := f.candidates[d.path.position].name
++	}
 +	if path.failed >= len(f.candidates) {
 +		return false, E.New(f.exhausted(path, now, destination, last, nil))
-+	}
+ 	}
+-	next := f.candidates[d.path.position].name
 +	next := f.candidates[path.position].name
  	if d.attempts >= utlsFallbackAttempts {
 -		if f.spoof {
@@ -1152,7 +1289,8 @@ index 279f62739..d213d999a 100644
 +	if !d.watched || ctx.Err() != nil || d.position != path.position || now.Before(path.restUntil) {
 +		return false
 +	}
-+	if path.twice() {
++	var stranger *realityStrangerError
++	if path.twice() && (d.position == 0 || !errors.As(err, &stranger)) {
 +		// answered, with a refusal: not what the fallback is for
 +		path.suspected = time.Time{}
 +		return false
@@ -1161,6 +1299,13 @@ index 279f62739..d213d999a 100644
 +	// here is no better than the one it replaced when its handshake fails, whatever the
 +	// failure: one that the server answers and refuses (ECH that it cannot carry, a
 +	// version of TLS the server does not speak) would otherwise stay in use for good.
++	// So would one without the key share REALITY servers ask for since Xray-core v26.9.8
++	// that has worked here, when the server is updated: it is answered as a stranger from
++	// then on, and is as one that has not worked.
++	path.worked &^= 1 << d.position
++	if path.last == d.position {
++		path.last = 0
++	}
 +	last := f.candidates[d.position].name
 +	f.advance(path)
 +	path.refused++
@@ -1182,11 +1327,54 @@ index 279f62739..d213d999a 100644
  func (c *UTLSClientConfig) fingerprintDial() fingerprintDial {
  	if c.fallback == nil {
  		return nil
+ 	}
+ 	return &utlsFallbackDial{
+ 		fallback: c.fallback,
+-		configuration: func(id utls.ClientHelloID) Config {
++		configuration: func(candidate utlsFallbackCandidate) Config {
+ 			attempt := *c
+-			attempt.id = id
++			attempt.id = candidate.id
+ 			return &attempt
+ 		},
+ 	}
+@@ -227,14 +499,21 @@ func (e *RealityClientConfig) fingerprintDial() fingerprintDial {
+ 	}
+ 	return &utlsFallbackDial{
+ 		fallback: e.uClient.fallback,
+-		configuration: func(id utls.ClientHelloID) Config {
++		configuration: func(candidate utlsFallbackCandidate) Config {
+ 			uClient := *e.uClient
+-			uClient.id = id
++			uClient.id = candidate.id
+ 			attempt := *e
+ 			attempt.uClient = &uClient
+-			if id != e.uClient.id {
+-				// the fingerprints of the list carry the key share REALITY asks for
++			if candidate.id != e.uClient.id {
++				// A fingerprint of the list. One without the key share REALITY servers ask
++				// for since Xray-core v26.9.8 is tried as any other: an older server takes
++				// it, and what a newer one answers names it.
++				classic, _ := checkRealityFingerprint(candidate.name)
+ 				attempt.classicFingerprint = ""
++				if classic {
++					attempt.classicFingerprint = candidate.name
++				}
++				attempt.classicFallback = classic
+ 			}
+ 			return &attempt
+ 		},
 diff --git a/common/tls/utls_fallback_test.go b/common/tls/utls_fallback_test.go
-index 1f08abb80..fcb273466 100644
+index 1f08abb80..721279cc7 100644
 --- a/common/tls/utls_fallback_test.go
 +++ b/common/tls/utls_fallback_test.go
-@@ -8,8 +8,13 @@ import (
+@@ -4,12 +4,19 @@ package tls
+ 
+ import (
+ 	"context"
++	"errors"
+ 	"net"
++	"runtime"
  	"strings"
  	"sync"
  	"testing"
@@ -1200,7 +1388,7 @@ index 1f08abb80..fcb273466 100644
  
  	utls "github.com/metacubex/utls"
  	"github.com/stretchr/testify/require"
-@@ -42,7 +47,14 @@ func fallbackClient(t *testing.T, fingerprint string, reality bool) (Config, *wa
+@@ -42,7 +49,14 @@ func fallbackClient(t *testing.T, fingerprint string, reality bool) (Config, *wa
  }
  
  func attemptName(t *testing.T, dial fingerprintDial, local string) string {
@@ -1216,7 +1404,7 @@ index 1f08abb80..fcb273466 100644
  	var id utls.ClientHelloID
  	switch config := config.(type) {
  	case *UTLSClientConfig:
-@@ -54,11 +66,20 @@ func attemptName(t *testing.T, dial fingerprintDial, local string) string {
+@@ -54,18 +68,27 @@ func attemptName(t *testing.T, dial fingerprintDial, local string) string {
  	}
  	for _, name := range []string{"chrome", "firefox", "safari", "edge", "ios", "qq", "360", "android", "randomized"} {
  		if known, _ := uTLSClientHelloID(name); known == id {
@@ -1239,7 +1427,25 @@ index 1f08abb80..fcb273466 100644
  }
  
  var fallbackServer = M.ParseSocksaddrHostPort("192.0.2.1", 443)
-@@ -109,11 +130,16 @@ func TestUTLSFallbackCandidates(t *testing.T) {
+ 
+ // The candidates are the configured fingerprint and then the list, each once; for REALITY
+-// without the fingerprints it refuses or accepts only from older servers. No list, a name
+-// that is not a fingerprint or nothing to go on with: no fallback.
++// without the fingerprints it cannot work with, and with the ones only older servers take.
++// No list, a name that is not a fingerprint or nothing to go on with: no fallback.
+ func TestUTLSFallbackCandidates(t *testing.T) {
+ 	names := func(config Config) string {
+ 		dialer, hasFallback := config.(fingerprintFallbackConfig)
+@@ -87,7 +110,7 @@ func TestUTLSFallbackCandidates(t *testing.T) {
+ 
+ 	setFallbackOrder(t, " edge, ios,qq,android,360 ,,safari")
+ 	config, _ = fallbackClient(t, "chrome", true)
+-	require.Equal(t, "chrome, safari", names(config))
++	require.Equal(t, "chrome, edge, ios, qq, safari", names(config))
+ 	config, _ = fallbackClient(t, "chrome", false)
+ 	require.Equal(t, "chrome, edge, ios, qq, android, 360, safari", names(config))
+ 
+@@ -109,11 +132,16 @@ func TestUTLSFallbackCandidates(t *testing.T) {
  	require.Empty(t, warnings.take(), "the warning comes once")
  }
  
@@ -1259,7 +1465,7 @@ index 1f08abb80..fcb273466 100644
  	for _, reality := range []bool{false, true} {
  		config, warnings := fallbackClient(t, "chrome", reality)
  		newDial := func() fingerprintDial {
-@@ -121,16 +147,19 @@ func TestUTLSFallbackDial(t *testing.T) {
+@@ -121,16 +149,19 @@ func TestUTLSFallbackDial(t *testing.T) {
  		}
  
  		dial := newDial()
@@ -1286,7 +1492,7 @@ index 1f08abb80..fcb273466 100644
  
  		dial = newDial()
  		require.Equal(t, "safari", attemptName(t, dial, "192.0.2.10"))
-@@ -145,33 +174,46 @@ func TestUTLSFallbackDial(t *testing.T) {
+@@ -145,33 +176,46 @@ func TestUTLSFallbackDial(t *testing.T) {
  		dial = newDial()
  		require.Equal(t, "chrome", attemptName(t, dial, "198.51.100.7"))
  		dial.answered()
@@ -1345,7 +1551,7 @@ index 1f08abb80..fcb273466 100644
  
  		// the configuration itself keeps its fingerprint
  		switch config := config.(type) {
-@@ -183,51 +225,502 @@ func TestUTLSFallbackDial(t *testing.T) {
+@@ -183,51 +227,736 @@ func TestUTLSFallbackDial(t *testing.T) {
  	}
  }
  
@@ -1410,16 +1616,25 @@ index 1f08abb80..fcb273466 100644
 +// may not be what the path dropped: the fallback rests, on the fingerprint it was using.
 +func TestUTLSFallbackAnsweredAgain(t *testing.T) {
  	setFallbackOrder(t, "safari,firefox")
+-	logger, warnings := newWarnLogger(t)
+-	options := realityOptionsForTest("chrome", false)
+-	options.Spoof = "packagist.org"
+-	config, err := NewClient(context.Background(), logger, "192.0.2.1", options)
+-	if err != nil {
+-		t.Skip("tls spoof is not supported here: ", err)
 +	rest, interval := utlsFallbackRest, utlsFallbackLogInterval
 +	utlsFallbackRest, utlsFallbackLogInterval = 200*time.Millisecond, 0
 +	t.Cleanup(func() { utlsFallbackRest, utlsFallbackLogInterval = rest, interval })
 +	config, warnings := fallbackClient(t, "chrome", false)
 +	newDial := func() fingerprintDial {
 +		return config.(fingerprintFallbackConfig).fingerprintDial()
-+	}
+ 	}
+-	dial := config.(fingerprintFallbackConfig).fingerprintDial()
 +
 +	dial := newDial()
-+	require.Equal(t, "chrome", attemptName(t, dial, "192.0.2.10"))
+ 	require.Equal(t, "chrome", attemptName(t, dial, "192.0.2.10"))
+-	again, _ := dial.unanswered(fallbackServer)
+-	require.True(t, again)
 +	lost(t, dial)
 +	require.Equal(t, "chrome", attemptName(t, dial, "192.0.2.10"))
 +	dial.answered()
@@ -1500,13 +1715,14 @@ index 1f08abb80..fcb273466 100644
 +	dial := newDial()
 +	require.Equal(t, "chrome", attemptName(t, dial, "192.0.2.10"))
 +	lost(t, dial)
-+	require.Equal(t, "safari", attemptName(t, dial, "192.0.2.10"))
-+	dial.answered()
+ 	require.Equal(t, "safari", attemptName(t, dial, "192.0.2.10"))
+ 	dial.answered()
+-	require.Len(t, warnings.take(), 1, "no fingerprint is announced as the one that works")
 +	lines := warnings.take()
 +	require.Len(t, lines, 2)
 +	require.Contains(t, lines[0], "unanswered with fingerprint chrome, retrying with safari")
 +	require.Contains(t, lines[1], "tls: fingerprint safari is answered where chrome was not; it is used from now on")
-+
+ 
 +	// the count is of the fingerprint in use: safari begins its own
 +	for range utlsFallbackAgain - 1 {
 +		answeredAgain("safari")
@@ -1604,7 +1820,7 @@ index 1f08abb80..fcb273466 100644
 +
 +	// every other fingerprint of the list refused: the fallback rests on the configured one
 +	config, warnings = fallbackClient(t, "firefox", false)
-+	dial = config.(fingerprintFallbackConfig).fingerprintDial()
+ 	dial = config.(fingerprintFallbackConfig).fingerprintDial()
 +	require.Equal(t, "firefox", attemptName(t, dial, "192.0.2.10"))
 +	lost(t, dial)
 +	require.Equal(t, "firefox", attemptName(t, dial, "192.0.2.10"))
@@ -1643,6 +1859,242 @@ index 1f08abb80..fcb273466 100644
 +	require.Contains(t, lines[len(lines)-1], "tls: no fingerprint of chrome, safari, randomized, firefox got through to 192.0.2.1:443 (2 unanswered, 2 refused; firefox: remote error: tls: handshake failure); the fallback rests for 30s, chrome is used as configured")
 +}
 +
++// For REALITY a fingerprint without the X25519MLKEM768 key share is a candidate as the
++// rest: an older server takes it. A server since Xray-core v26.9.8 answers such a
++// ClientHello as a stranger's, with the certificate of its target. The failure then names
++// the fingerprint, without the advice on what to configure, which nobody did here, and
++// the fallback goes on with the next one: also when the fingerprint has worked on the
++// path, as it has with a server that was updated since. The configured fingerprint is not
++// left for what the server answers.
++func TestUTLSFallbackRealityWithoutHybridKeyShare(t *testing.T) {
++	certificate, trusted := trustedServerCertificate()
++	if !trusted {
++		if runtime.GOOS == "linux" {
++			t.Fatal("the system roots of this process cannot be set: were they loaded by an earlier test?")
++		}
++		t.Skip("the system roots of this process cannot be set")
++	}
++	setFallbackOrder(t, "edge,safari")
++	interval := utlsFallbackLogInterval
++	utlsFallbackLogInterval = 0
++	t.Cleanup(func() { utlsFallbackLogInterval = interval })
++	// The clients of this test ask for a name the certificate of the target is not for:
++	// the handshake with the target fails on the certificate. With a certificate that is
++	// valid here it fails after it, and a request to the target is then made on the
++	// connection (realityClientFallback), in a goroutine a test cannot wait for.
++	var config Config
++	var warnings *warnLog
++	client := func(fingerprint string) {
++		logger, writer := newWarnLogger(t)
++		options := realityOptionsForTest(fingerprint, true)
++		options.ServerName = "other.example"
++		created, err := NewClient(context.Background(), logger, "192.0.2.1", options)
++		require.NoError(t, err)
++		config, warnings = created, writer
++	}
++	newDial := func() fingerprintDial {
++		return config.(fingerprintFallbackConfig).fingerprintDial()
++	}
++	attempt := func(dial fingerprintDial) *RealityClientConfig {
++		attempt, _ := dial.attempt(localAddrConn{local: "192.0.2.10"})
++		return attempt.(*RealityClientConfig)
++	}
++	// a dial that has lost the ClientHello of the configured chrome twice
++	leaveConfigured := func() fingerprintDial {
++		dial := newDial()
++		require.Equal(t, "chrome", attemptName(t, dial, "192.0.2.10"))
++		lost(t, dial)
++		require.Equal(t, "chrome", attemptName(t, dial, "192.0.2.10"))
++		lost(t, dial)
++		return dial
++	}
++	// the handshake of an attempt with a server that answers as the target does
++	asStranger := func(attempt Config) error {
++		listener, err := net.Listen("tcp", "127.0.0.1:0")
++		require.NoError(t, err)
++		defer listener.Close()
++		conn, err := net.Dial("tcp", listener.Addr().String())
++		require.NoError(t, err)
++		defer conn.Close()
++		server, err := listener.Accept()
++		require.NoError(t, err)
++		plainTLSServer(t, server, certificate)
++		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
++		defer cancel()
++		_, err = ClientHandshake(ctx, conn, attempt)
++		require.Error(t, err)
++		return err
++	}
++	ctx := context.Background()
++	var stranger *realityStrangerError
++	const refusal = "reality verification failed, possibly because of the uTLS fingerprint edge: REALITY servers since Xray-core v26.9.8 reject a Client Hello without an X25519MLKEM768 key share"
++	const advice = ", use chrome, firefox, safari, random or randomized"
++
++	// a newer server: edge is refused, and the next one is tried
++	client("chrome")
++	dial := leaveConfigured()
++	edge := attempt(dial)
++	require.Equal(t, utls.HelloEdge_Auto, edge.uClient.id)
++	require.Equal(t, "edge", edge.classicFingerprint)
++	require.True(t, edge.classicFallback)
++	err := asStranger(edge)
++	require.ErrorAs(t, err, &stranger)
++	require.True(t, strings.HasPrefix(err.Error(), refusal+": x509: "), err.Error())
++	// the same after a handshake with a certificate that is valid here
++	require.ErrorAs(t, edge.verificationFailed(nil), &stranger)
++	require.Equal(t, refusal, edge.verificationFailed(nil).Error())
++	warnings.take()
++	require.True(t, dial.failed(ctx, fallbackServer, err))
++	lines := warnings.take()
++	require.Len(t, lines, 1)
++	require.Contains(t, lines[0], "tls: the handshake with 192.0.2.1:443 failed with fingerprint edge ("+refusal+": x509: ")
++	require.Contains(t, lines[0], "), retrying with safari")
++	safari := attempt(dial)
++	require.Equal(t, helloSafari26_3, safari.uClient.id)
++	require.Empty(t, safari.classicFingerprint)
++	require.False(t, safari.classicFallback)
++	dial.answered()
++	require.Equal(t, "safari", attemptName(t, newDial(), "192.0.2.10"))
++	// the configuration itself is as it was
++	require.Empty(t, config.(*RealityClientConfig).classicFingerprint)
++	require.False(t, config.(*RealityClientConfig).classicFallback)
++
++	// an older server: edge is answered and used
++	client("chrome")
++	dial = leaveConfigured()
++	require.Equal(t, "edge", attemptName(t, dial, "192.0.2.10"))
++	dial.answered()
++	lines = warnings.take()
++	require.Contains(t, lines[len(lines)-1], "tls: fingerprint edge is answered where chrome was not; it is used from now on")
++	// another failure of its handshake is the server's business, as with any fingerprint
++	// that has worked
++	dial = newDial()
++	require.Equal(t, "edge", attemptName(t, dial, "192.0.2.10"))
++	require.False(t, dial.failed(ctx, fallbackServer, E.New("remote error: tls: handshake failure")))
++	require.Empty(t, warnings.take())
++	// the server is updated: edge is left, as one that has not worked
++	dial = newDial()
++	edge = attempt(dial)
++	require.Equal(t, "edge", edge.classicFingerprint)
++	err = asStranger(edge)
++	require.ErrorAs(t, err, &stranger)
++	require.True(t, dial.failed(ctx, fallbackServer, err))
++	lines = warnings.take()
++	require.Len(t, lines, 1)
++	require.Contains(t, lines[0], "failed with fingerprint edge ("+refusal+": x509: ")
++	require.Contains(t, lines[0], "), retrying with safari")
++	require.Equal(t, "safari", attemptName(t, dial, "192.0.2.10"))
++	// nothing else gets through: the fallback rests on the configured fingerprint, not
++	// on the one the server does not take any more
++	lost(t, dial)
++	require.Equal(t, "chrome", attemptName(t, dial, "192.0.2.10"))
++	lost(t, dial)
++	require.Equal(t, "chrome", attemptName(t, dial, "192.0.2.10"))
++	again, err := dial.unanswered(fallbackServer)
++	require.False(t, again)
++	require.ErrorContains(t, err, "no fingerprint of chrome, edge, safari got through (2 unanswered, 1 refused)")
++	lines = warnings.take()
++	require.Contains(t, lines[len(lines)-1], "tls: no fingerprint of chrome, edge, safari got through to 192.0.2.1:443 (2 unanswered, 1 refused); the fallback rests for 30s, chrome is used as configured")
++	name, watched := attemptWatched(t, newDial(), "192.0.2.10")
++	require.Equal(t, "chrome", name)
++	require.False(t, watched)
++
++	// What "has not worked" means: when the path comes round to edge again, one
++	// unanswered ClientHello is enough to leave it.
++	client("chrome")
++	dial = leaveConfigured()
++	require.Equal(t, "edge", attemptName(t, dial, "192.0.2.10"))
++	dial.answered()
++	dial = newDial()
++	require.True(t, dial.failed(ctx, fallbackServer, asStranger(attempt(dial))))
++	require.Equal(t, "safari", attemptName(t, dial, "192.0.2.10"))
++	dial.answered()
++	dial = newDial()
++	require.Equal(t, "safari", attemptName(t, dial, "192.0.2.10"))
++	lost(t, dial)
++	require.Equal(t, "safari", attemptName(t, dial, "192.0.2.10"))
++	lost(t, dial)
++	require.Equal(t, "chrome", attemptName(t, dial, "192.0.2.10"))
++	lost(t, dial)
+ 	require.Equal(t, "chrome", attemptName(t, dial, "192.0.2.10"))
+ 	again, _ = dial.unanswered(fallbackServer)
+-	require.True(t, again)
++	require.False(t, again, "four handshakes")
++	dial = newDial()
++	require.Equal(t, "edge", attemptName(t, dial, "192.0.2.10"))
++	again, err = dial.unanswered(fallbackServer)
++	require.False(t, again, "left after one unanswered ClientHello, which closes the list")
++	require.ErrorContains(t, err, "unanswered with all fingerprints (chrome, edge, safari)")
++	lines = warnings.take()
++	require.Contains(t, lines[len(lines)-1], "the fallback rests for 30s, safari is used: it worked here last")
++
++	// With a fingerprint that carries the key share the answer to a stranger has another
++	// cause (the key, the short id), which no other fingerprint mends: it is not told so.
++	client("chrome")
++	configured := attempt(newDial())
++	require.Equal(t, utls.HelloChrome_Auto, configured.uClient.id)
++	require.Empty(t, configured.classicFingerprint)
++	err = asStranger(configured)
++	require.True(t, strings.HasPrefix(err.Error(), "x509: "), err.Error())
++	require.False(t, errors.As(err, &stranger))
++	require.Equal(t, "reality verification failed", configured.verificationFailed(nil).Error())
++	require.False(t, errors.As(configured.verificationFailed(nil), &stranger))
++
++	// The refusal of one fingerprint leaves alone what the path has learned of another:
++	// it still rests on the one that worked last.
++	setFallbackOrder(t, "safari,edge")
++	client("chrome")
++	dial = leaveConfigured()
++	require.Equal(t, "safari", attemptName(t, dial, "192.0.2.10"))
++	dial.answered()
++	dial = newDial()
++	require.Equal(t, "safari", attemptName(t, dial, "192.0.2.10"))
++	lost(t, dial)
+ 	require.Equal(t, "safari", attemptName(t, dial, "192.0.2.10"))
++	lost(t, dial)
++	edge = attempt(dial)
++	require.Equal(t, "edge", edge.classicFingerprint)
++	require.True(t, dial.failed(ctx, fallbackServer, asStranger(edge)))
++	require.Equal(t, "chrome", attemptName(t, dial, "192.0.2.10"))
+ 	again, _ = dial.unanswered(fallbackServer)
+-	require.True(t, again)
++	require.False(t, again, "four handshakes")
++	dial = newDial()
++	require.Equal(t, "chrome", attemptName(t, dial, "192.0.2.10"))
++	again, err = dial.unanswered(fallbackServer)
++	require.False(t, again)
++	require.ErrorContains(t, err, "no fingerprint of chrome, safari, edge got through (2 unanswered, 1 refused)")
++	lines = warnings.take()
++	require.Contains(t, lines[len(lines)-1], "the fallback rests for 30s, safari is used: it worked here last")
++
++	// A configured fingerprint without the key share is not left for what the server
++	// answers, and the failure says what to configure.
++	setFallbackOrder(t, "safari")
++	client("edge")
++	require.Len(t, warnings.take(), 1, "the warning of the configuration")
++	dial = newDial()
++	edge = attempt(dial)
++	require.Equal(t, "edge", edge.classicFingerprint)
++	require.False(t, edge.classicFallback)
++	err = asStranger(edge)
++	require.ErrorAs(t, err, &stranger)
++	require.True(t, strings.HasPrefix(err.Error(), refusal+advice+": x509: "), err.Error())
++	require.Equal(t, refusal+advice, edge.verificationFailed(nil).Error())
++	require.False(t, dial.failed(ctx, fallbackServer, err))
++	require.Empty(t, warnings.take())
++	require.Equal(t, "edge", attemptName(t, newDial(), "192.0.2.10"))
++	// a fingerprint of its list that carries the key share is not named for it
++	dial = newDial()
++	attempt(dial)
++	lost(t, dial)
++	attempt(dial)
++	lost(t, dial)
++	safari = attempt(dial)
++	require.Equal(t, helloSafari26_3, safari.uClient.id)
++	require.Empty(t, safari.classicFingerprint)
++	require.False(t, safari.classicFallback)
++}
++
 +// With tls.spoof the fallback works the same way, and the report of a list nobody
 +// answered names tls.spoof as a possible cause.
 +func TestUTLSFallbackWithSpoof(t *testing.T) {
@@ -1650,43 +2102,31 @@ index 1f08abb80..fcb273466 100644
 +	interval := utlsFallbackLogInterval
 +	utlsFallbackLogInterval = 0
 +	t.Cleanup(func() { utlsFallbackLogInterval = interval })
- 	logger, warnings := newWarnLogger(t)
- 	options := realityOptionsForTest("chrome", false)
- 	options.Spoof = "packagist.org"
++	logger, warnings := newWarnLogger(t)
++	options := realityOptionsForTest("chrome", false)
++	options.Spoof = "packagist.org"
 +	if !tlsspoof.PlatformSupported {
 +		t.Skip("tls spoof is not supported here")
 +	}
- 	config, err := NewClient(context.Background(), logger, "192.0.2.1", options)
--	if err != nil {
--		t.Skip("tls spoof is not supported here: ", err)
++	config, err := NewClient(context.Background(), logger, "192.0.2.1", options)
 +	require.NoError(t, err)
 +	newDial := func() fingerprintDial {
 +		return config.(fingerprintFallbackConfig).fingerprintDial()
- 	}
--	dial := config.(fingerprintFallbackConfig).fingerprintDial()
++	}
 +	dial := newDial()
- 	require.Equal(t, "chrome", attemptName(t, dial, "192.0.2.10"))
--	again, _ := dial.unanswered(fallbackServer)
--	require.True(t, again)
++	require.Equal(t, "chrome", attemptName(t, dial, "192.0.2.10"))
 +	lost(t, dial)
 +	require.Equal(t, "chrome", attemptName(t, dial, "192.0.2.10"))
 +	lost(t, dial)
- 	require.Equal(t, "safari", attemptName(t, dial, "192.0.2.10"))
- 	dial.answered()
--	require.Len(t, warnings.take(), 1, "no fingerprint is announced as the one that works")
++	require.Equal(t, "safari", attemptName(t, dial, "192.0.2.10"))
++	dial.answered()
 +	lines := warnings.take()
 +	require.Contains(t, lines[len(lines)-1], "fingerprint safari is answered where chrome was not; it is used from now on")
 +	require.Equal(t, "safari", attemptName(t, newDial(), "192.0.2.10"), "what was learned is kept")
- 
--	dial = config.(fingerprintFallbackConfig).fingerprintDial()
--	require.Equal(t, "chrome", attemptName(t, dial, "192.0.2.10"))
--	again, _ = dial.unanswered(fallbackServer)
--	require.True(t, again)
++
 +	// the whole list of four is gone through, over two dials
 +	dial = newDial()
- 	require.Equal(t, "safari", attemptName(t, dial, "192.0.2.10"))
--	again, _ = dial.unanswered(fallbackServer)
--	require.True(t, again)
++	require.Equal(t, "safari", attemptName(t, dial, "192.0.2.10"))
 +	lost(t, dial)
 +	require.Equal(t, "safari", attemptName(t, dial, "192.0.2.10"))
 +	lost(t, dial)
@@ -1741,11 +2181,11 @@ index 1f08abb80..fcb273466 100644
 +	setFallbackOrder(t, "")
 +	require.Empty(t, names(nil))
 +	require.Equal(t, "chrome, safari, randomized, edge, firefox", names(&option.UTLSFallbackOptions{Enabled: true}), "the default list")
-+	// a REALITY client leaves out the one of the default list that has no X25519MLKEM768 key share
++	// a REALITY client has the same default list, with the one that has no X25519MLKEM768 key share
 +	realityLogger, _ := newWarnLogger(t)
 +	reality, err := NewClient(service.ContextWith[*option.UTLSFallbackOptions](context.Background(), &option.UTLSFallbackOptions{Enabled: true}), realityLogger, "192.0.2.1", realityOptionsForTest("chrome", true))
 +	require.NoError(t, err)
-+	require.Equal(t, "chrome, safari, randomized, firefox", reality.(fingerprintFallbackConfig).fingerprintDial().(*utlsFallbackDial).fallback.names())
++	require.Equal(t, "chrome, safari, randomized, edge, firefox", reality.(fingerprintFallbackConfig).fingerprintDial().(*utlsFallbackDial).fallback.names())
 +
 +	// A configuration loaded again without the option is registered as none (box.New),
 +	// in the registry the one before it was registered in: its option does not stay.
@@ -1828,8 +2268,7 @@ index 1f08abb80..fcb273466 100644
 +	lost(t, dial)
 +	require.Equal(t, "chrome", attemptName(t, dial, "192.0.2.10"))
 +	dial.answered()
- 	lines := warnings.take()
--	require.Contains(t, lines[len(lines)-1], "unanswered with all fingerprints (chrome, safari, firefox); tls.spoof is enabled and may be the cause")
++	lines := warnings.take()
 +	require.Contains(t, lines[len(lines)-1], "is answered after its ClientHello was not")
 +	time.Sleep(450 * time.Millisecond)
 +	require.Contains(t, wholeList(), "the fallback rests for 400ms")
@@ -1852,7 +2291,8 @@ index 1f08abb80..fcb273466 100644
 +		warn("tls: the same line ", 1)
 +	}
 +	warn("tls: another line")
-+	lines := warnings.take()
+ 	lines := warnings.take()
+-	require.Contains(t, lines[len(lines)-1], "unanswered with all fingerprints (chrome, safari, firefox); tls.spoof is enabled and may be the cause")
 +	require.Len(t, lines, 2)
 +	require.Contains(t, lines[0], "tls: the same line 1")
 +	require.NotContains(t, lines[0], "more")

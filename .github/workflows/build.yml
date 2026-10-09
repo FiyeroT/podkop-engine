@@ -100,6 +100,8 @@ jobs:
       - name: REALITY lab (xray old..latest, two dest variants)
         if: matrix.format == 'ipk'
         run: |
+          # the status of the gate, not of tee: a mismatch must stop the release
+          set -o pipefail
           lab/fetch-bins.sh pkgs lab/bin
           lab/gate.sh lab/bin 2>&1 | tee lab-results.txt
       - uses: actions/upload-artifact@v7

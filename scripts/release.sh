@@ -64,13 +64,13 @@ fi)
 
 OpenWrt 24.10 и старше (opkg):
 \`\`\`sh
-wget -O /tmp/pe.ipk $url/$tag/${f}_<pkgarch>.ipk        # podkop-engine-full: podkop-engine-full_${v}-r${r}_openwrt_<pkgarch>.ipk
-opkg remove --force-depends sing-box sing-box-tiny 2>/dev/null; opkg install /tmp/pe.ipk
+# podkop-engine-full: то же с именем файла podkop-engine-full_${v}-r${r}_openwrt_<pkgarch>.ipk
+wget -O /tmp/pe.ipk $url/$tag/${f}_<pkgarch>.ipk && { opkg remove --force-depends sing-box sing-box-tiny 2>/dev/null; opkg install /tmp/pe.ipk; }
 \`\`\`
 OpenWrt 25.12 и snapshot (apk):
 \`\`\`sh
-wget -O /tmp/pe.apk $url/$tag/${f}_<pkgarch>.apk        # podkop-engine-full: podkop-engine-full_${v}-r${r}_openwrt_<pkgarch>.apk
-apk add --allow-untrusted /tmp/pe.apk
+# podkop-engine-full: то же с именем файла podkop-engine-full_${v}-r${r}_openwrt_<pkgarch>.apk
+wget -O /tmp/pe.apk $url/$tag/${f}_<pkgarch>.apk && apk add --allow-untrusted /tmp/pe.apk
 \`\`\`
 
 Архитектуры ($n_ipk ipk, $n_apk apk): $arches
@@ -81,7 +81,9 @@ EOF
   if [ -n "${DRY_RUN:-}" ]; then
     echo "### DRY_RUN: $tag $latest"; cat "$dir/NOTES.md"; ls "$dir"; rm -rf "$dir"; continue
   fi
-  gh release create "$tag" -R "$repo" --draft $latest --title "podkop-engine $v-r$r" \
+  # the tag is made when the draft is published: from this commit, not from whatever the
+  # default branch has by then
+  gh release create "$tag" -R "$repo" --draft $latest --target "${GITHUB_SHA:-$(git rev-parse HEAD)}" --title "podkop-engine $v-r$r" \
     --notes-file "$dir/NOTES.md" "$dir"/*.ipk "$dir"/*.apk "$dir/SHA256SUMS"
   echo "draft $tag: $n_ipk ipk + $n_apk apk, podkop-engine-full: $n_full"
   rm -rf "$dir"

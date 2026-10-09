@@ -1,7 +1,7 @@
 From db0570d08c837469bfddfa223b780add655e5446 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Tue, 6 Oct 2026 23:37:27 +0300
-Subject: [PATCH 087/106] urltest: check the download URL of the environment at
+Subject: [PATCH 087/118] urltest: check the download URL of the environment at
  start
 
 A download_url the test cannot use is refused as a configuration error, while the value

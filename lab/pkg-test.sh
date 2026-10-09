@@ -67,10 +67,10 @@ case "$v" in
   [ "$s" = 2 ] && [ ! -s /tmp/pk/bad.out ] && grep -q '^error: ' /tmp/pk/bad.err || fail "decode-link: bad link, status $s"
   echo "features, xhttp and decode-link OK"
   # r13: every kind of link the build has, each built before it is printed; the options by
-  # path and what a link may not set; the switches of the liveness probe and of the
-  # fingerprint fallback
-  # (the name r13 adds to the features line is tls.utls-fallback; the links a build reads
-  # are not in that line: the command itself says what it does not read)
+  # path and what a link may not set; the switch of the liveness probe; the fingerprint
+  # fallback, which has no switch here
+  # (told by the name r13 added to the features line, tls.utls-fallback: the revision of
+  # the package starts from 1 again with every new version of sing-box)
   if sing-box version | grep -q '^Features: .*[ ,]tls\.utls-fallback\(,\|$\)'; then
     for l in 'ss://MjAyMi1ibGFrZTMtYWVzLTI1Ni1nY206ZG1DbHkvWmgxNVd3OStzK0dGWGlGVElrcHc3Yy9xQ0lTYUJyYWk3V2hoWT0@203.0.113.20:8388#s' \
              'hysteria2://password@203.0.113.20:443,5000-6000/?sni=e.example.com&obfs=salamander&obfs-password=x#h' \
@@ -91,11 +91,15 @@ case "$v" in
     # before the "#": what follows it is the name of the link
     s=0; echo "$V" | sed 's/^vmess/vless/; s/#/\&sb.detour=direct#/' | sing-box tools decode-link --compact >/tmp/pk/deny.out 2>/tmp/pk/deny.err || s=$?
     [ "$s" = 2 ] && [ ! -s /tmp/pk/deny.out ] && grep -q 'not for a link to set' /tmp/pk/deny.err || fail "decode-link: sb.detour, status $s"
-    for o in liveness utls_fallback utls_fallback_order; do
-      uci -q get sing-box.main.$o >/dev/null || fail "/etc/config/sing-box has no option $o"
-    done
+    uci -q get sing-box.main.liveness >/dev/null || fail "/etc/config/sing-box has no option liveness"
+    # the fingerprint fallback has no switch in the package: experimental.utls_fallback of
+    # config.json turns it on, and nothing here sets its environment variable
+    ! grep -q 'utls_fallback' /etc/config/sing-box || fail "/etc/config/sing-box has an option of the fingerprint fallback"
+    ! grep -rq 'SING_BOX_UTLS_FALLBACK' /etc/init.d/sing-box /etc/init.d/podkop-engine /usr/libexec/podkop-engine || fail "the package sets the fingerprint fallback"
+    # and the binary takes the option that does turn it on
+    printf '{"experimental": {"utls_fallback": {"enabled": true, "fingerprints": ["safari", "firefox"]}}, "outbounds": [%s]}\n' "$o" > /tmp/pk/fb.json
+    sing-box check -c /tmp/pk/fb.json || fail "experimental.utls_fallback is not accepted"
     sh -n /usr/libexec/podkop-engine/failsafe || fail "failsafe script"
-    grep -q 'SING_BOX_UTLS_FALLBACK' /etc/init.d/sing-box || fail "the init script does not pass the fingerprint fallback"
     echo "r13: links of every kind, option paths, switches OK"
   fi
   ;;

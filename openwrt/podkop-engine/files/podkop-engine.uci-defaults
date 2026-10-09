@@ -1,9 +1,8 @@
 #!/bin/sh
 # podkop-engine: /etc/config/sing-box keeps its contents on upgrade (podkop edits it), so
 # the switches added since are missing after an upgrade from older releases: the DNS
-# fallback (r4), the download test before a urltest switch (r8), the liveness probe and
-# the uTLS fingerprint fallback (r13). Add each one that is missing, on; a value that is
-# set stays as it is.
+# fallback (r4), the download test before a urltest switch (r8), the liveness probe
+# (r13). Add each one that is missing, turned on. A value that is set stays as it is.
 # The failsafe service came with r4: a package upgrade starts a new init script but does
 # not enable it, so after an upgrade from r1-r3 it was gone at the next boot. Its switch
 # is sing-box.main.failsafe, not the rc.d link.
@@ -14,7 +13,5 @@ uci -q get sing-box.main.dns_fallback >/dev/null || { uci -q set sing-box.main.d
 uci -q get sing-box.main.urltest_download_check >/dev/null || { uci -q set sing-box.main.urltest_download_check=1; changed=1; }
 uci -q get sing-box.main.urltest_download_url >/dev/null || { uci -q set sing-box.main.urltest_download_url='https://speed.cloudflare.com/__down?bytes=65536'; changed=1; }
 uci -q get sing-box.main.liveness >/dev/null || { uci -q set sing-box.main.liveness=1; changed=1; }
-uci -q get sing-box.main.utls_fallback >/dev/null || { uci -q set sing-box.main.utls_fallback=1; changed=1; }
-uci -q get sing-box.main.utls_fallback_order >/dev/null || { uci -q set sing-box.main.utls_fallback_order='safari,randomized,firefox,chrome'; changed=1; }
 [ "$changed" -eq 1 ] && uci -q commit sing-box
 exit 0

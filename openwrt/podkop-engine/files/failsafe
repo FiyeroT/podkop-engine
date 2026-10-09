@@ -25,7 +25,7 @@ last_error() {
 		tr -d '\033' | sed 's/\[[0-9;]*m//g; s/^.*sing-box\[[0-9]*\]: //' | cut -c 1-300
 }
 
-rm -f "$FIFO"
+rm -f "$FIFO" "$MARK"
 mkfifo "$FIFO" || exit 1
 # Keep one `ubus subscribe` running. After a restart of ubusd the old subscriber keeps
 # running but receives nothing, so subscribe again when the ubusd process changes. The
@@ -48,27 +48,41 @@ mkfifo "$FIFO" || exit 1
 # crash loop. Every PROBE_INTERVAL seconds the probe asks the DNS inbound of podkop
 # (127.0.0.42) for podkop's test name, which sing-box answers by itself with a FakeIP
 # address, no server asked. Any answer counts. After PROBE_FAILURES queries in a row
-# without one (49 to 69 s of silence) sing-box is killed; procd starts it again, and the
-# kill counts as a crash above. The probe is armed by an answer from the same process: a
-# sing-box that never answered (another configuration, still starting) is left alone.
-# So is one that shares the CPU with `podkop list_update`.
+# without one (49 to 72 s of silence) sing-box is killed; procd starts it again, and the
+# kill counts as a crash above.
+#
+# Whose silence counts:
+# - of a process that has given podkop's own answer, the FakeIP address: a sing-box that
+#   never did (another configuration, still starting) is left alone;
+# - of the process procd starts right after one the probe killed, once it has been silent
+#   for the time a start may take (PROBE_GRACE, more with many remote rule-sets: they are
+#   fetched before sing-box listens): it runs the configuration that did answer, and a
+#   sing-box that hangs again before its first answer would otherwise stay for good.
+# What does not count: silence while `podkop list_update` shares the CPU; a query the
+# router does not deliver (router_silent); a round in which the script itself or its query
+# ran late, the processes of the router being starved (round_late). A kill cures none of
+# these.
 # Off: uci set sing-box.main.liveness=0; uci commit sing-box; service podkop-engine restart
 PROBE_INTERVAL=20
 PROBE_TIMEOUT=3
 PROBE_FAILURES=3
+PROBE_GRACE=180
 PROBE_NAME=fakeip.podkop.fyi
 PROBE_SERVER=127.0.0.42
 
-# the sing-box that procd runs: `sing-box check` and the like are sing-box processes too
+# The sing-box that procd runs: `sing-box check` and the like are sing-box processes too.
+# Prints its PID, nothing when procd runs none; fails when procd could not be asked.
 box_pid() {
-	ubus call service list '{"name":"sing-box"}' 2>/dev/null |
-		jsonfilter -e '@["sing-box"]["instances"]["sing-box.main"]["pid"]' 2>/dev/null
+	services=$(ubus -t 5 call service list '{"name":"sing-box"}' 2>/dev/null) || return 1
+	[ -n "$services" ] || return 1
+	jsonfilter -s "$services" -e '@["sing-box"]["instances"]["sing-box.main"]["pid"]' 2>/dev/null
+	return 0
 }
 
-# 0: an answer came (an error answer too), 1: none, 2: could not ask
+# 0: an answer came (an error answer too), 1: none, 2: could not ask; the answer is in $answer
 probe() {
 	if command -v dig >/dev/null 2>&1; then
-		dig +short +timeout=$PROBE_TIMEOUT +tries=1 "@$PROBE_SERVER" "$PROBE_NAME" >/dev/null 2>&1
+		answer=$(dig +short +timeout=$PROBE_TIMEOUT +tries=1 "@$PROBE_SERVER" "$PROBE_NAME" 2>/dev/null)
 		case $? in
 		0) return 0 ;;
 		9) return 1 ;;
@@ -83,6 +97,9 @@ probe() {
 	esac
 }
 
+# the answer is podkop's own: an address of its FakeIP range (198.18.0.0/15)
+fakeip() { echo "$answer" | grep -qE '(^|[^0-9.])198\.1[89]\.[0-9]+\.[0-9]+'; }
+
 lists_updating() {
 	pid=$(cat /var/run/podkop_list_update.pid 2>/dev/null)
 	[ -n "$pid" ] && [ -d "/proc/$pid" ] && return 0
@@ -90,45 +107,127 @@ lists_updating() {
 	pgrep -f 'podkop list_updat[e]' >/dev/null 2>&1
 }
 
-if [ "$(uci -q get sing-box.main.liveness)" != 0 ]; then
+# Is it the router that does not deliver the query, not sing-box that does not answer it:
+# a full connection table drops new flows, those of the loopback and the probe's query
+# among them, and so does a kernel that cannot pass a packet in time. The kernel itself
+# answers the control, a ping, over the same way; it says nothing of processes. The ping
+# is a control only where it has been answered once ($control, set while sing-box answers):
+# with net.ipv4.icmp_echo_ignore_all=1, a rule that drops ICMP or no ping at all it would
+# call every silence the router's.
+router_silent() {
+	count=$(cat /proc/sys/net/netfilter/nf_conntrack_count 2>/dev/null)
+	max=$(cat /proc/sys/net/netfilter/nf_conntrack_max 2>/dev/null)
+	[ -n "$count" ] && [ "${max:-0}" -gt 0 ] && [ "$count" -ge $((max * 95 / 100)) ] && return 0
+	[ "$control" = 1 ] || return 1
+	! ping -c 1 -W "$PROBE_TIMEOUT" "$PROBE_SERVER" >/dev/null 2>&1
+}
+
+# How long the process after a killed one may be silent before its silence counts: a start
+# fetches the remote rule-sets missing from the cache five at a time, each for 30 s at
+# most, and listens after that. Not longer than leaves a hung one a run short enough for
+# procd to count it (respawn 600 5 5).
+start_grace() {
+	sets=$(jsonfilter -i "$(uci -q get sing-box.main.conffile || echo /etc/sing-box/config.json)" -e '@.route.rule_set[@.type="remote"].tag' 2>/dev/null | wc -l)
+	grace=$(( (${sets:-0} + 4) / 5 * 30 + 30 ))
+	[ "$grace" -gt "$PROBE_GRACE" ] || grace=$PROBE_GRACE
+	[ "$grace" -le 480 ] || grace=480
+	echo "$grace"
+}
+
+case "$(uci -q get sing-box.main.liveness)" in
+0 | off | false | no | disabled) liveness=0 ;;
+*) liveness=1 ;;
+esac
+if [ "$liveness" = 1 ]; then
 	(
-		armed=""   # the PID that has answered
+		armed=""       # the PID whose silence counts
+		heir=""        # the probe has killed a process: the next one is judged without a first answer
+		heir_pid=""
+		heir_since=0
+		grace=$PROBE_GRACE
+		absent=0       # rounds in a row procd ran no sing-box
 		fails=0
 		since=0
+		standing=0     # rounds in a row that did not count for the router's own sake
+		control=""     # 1 once the router has answered the control ping
+		tries=0
 		while kill -0 "$main" 2>/dev/null; do
 			waited=0
+			began=$(date +%s)
 			while [ "$waited" -lt "$PROBE_INTERVAL" ] && kill -0 "$main" 2>/dev/null; do
 				sleep 5
 				waited=$((waited + 5))
 			done
+			# the service was stopped during the wait: what is left of it asks and kills no more
+			kill -0 "$main" 2>/dev/null || break
 			# asked every time: podkop may be installed after this service has started
-			[ -x /usr/bin/podkop ] || { armed=""; fails=0; continue; }
-			box=$(box_pid)
-			if [ -z "$box" ] || [ "$box" != "$armed" ]; then
-				fails=0
-			fi
-			[ -n "$box" ] || { armed=""; continue; }
-			if lists_updating; then
+			[ -x /usr/bin/podkop ] || { armed=""; heir=""; fails=0; continue; }
+			# procd could not be asked: the round says nothing, as when the query cannot be sent
+			box=$(box_pid) || continue
+			if [ -z "$box" ]; then
+				# procd starts the successor of a killed process after 5 s, before the next
+				# round: two rounds without an instance mean sing-box was stopped, and what
+				# is started later is not that successor
+				absent=$((absent + 1))
+				[ "$absent" -lt 2 ] || heir=""
+				armed=""
 				fails=0
 				continue
 			fi
+			absent=0
+			[ "$box" = "$armed" ] || fails=0
 			asked=$(date +%s)
 			probe
-			case $? in
+			result=$?
+			# the wait or the query took far longer than it should: the processes of the
+			# router are starved, sing-box among them
+			round_late=""
+			[ $((asked - began)) -le $((PROBE_INTERVAL + 5)) ] && [ $(($(date +%s) - asked)) -le $((PROBE_TIMEOUT + 3)) ] || round_late=1
+			case $result in
 			0)
-				armed=$box
 				fails=0
+				standing=0
+				heir=""
+				if fakeip; then armed=$box; fi
+				# sing-box has just answered, so the router delivers: is the control answered
+				if [ "$control" != 1 ] && [ "$tries" -lt 5 ]; then
+					tries=$((tries + 1))
+					if ping -c 1 -W "$PROBE_TIMEOUT" "$PROBE_SERVER" >/dev/null 2>&1; then
+						control=1
+					elif [ "$tries" -eq 5 ]; then
+						logger -t podkop-engine "the router does not answer a ping of $PROBE_SERVER: the liveness probe goes on without that control"
+					fi
+				fi
 				;;
 			1)
-				[ "$box" = "$armed" ] || continue
+				# an answer arms during a list update too; only the silence is not counted
+				if lists_updating; then fails=0; continue; fi
+				if [ "$box" != "$armed" ]; then
+					[ -n "$heir" ] || continue
+					[ "$box" = "$heir_pid" ] || { heir_pid=$box; heir_since=$asked; grace=$(start_grace); }
+					[ $((asked - heir_since)) -ge "$grace" ] || continue
+					armed=$box
+				fi
+				if [ -n "$round_late" ] || router_silent; then
+					fails=0
+					standing=$((standing + 1))
+					[ "$standing" -eq 3 ] && logger -t podkop-engine "the liveness probe waits: the router itself is slow or does not deliver (its connection table is full, a ping of $PROBE_SERVER is not answered within $PROBE_TIMEOUT s, or the probe ran late)"
+					continue
+				fi
+				standing=0
 				[ "$fails" -eq 0 ] && since=$asked
 				fails=$((fails + 1))
 				[ "$fails" -ge "$PROBE_FAILURES" ] || continue
+				# not a process that took the number of one that has just exited; when procd
+				# cannot be asked the count stays, and the next round asks again
+				current=$(box_pid) || continue
 				silent=$(($(date +%s) - since))
 				fails=0
 				armed=""
-				# not a process that took the number of one that has just exited
-				[ "$(box_pid)" = "$box" ] || continue
+				[ "$current" = "$box" ] || continue
+				kill -0 "$main" 2>/dev/null || break
+				heir=1
+				heir_pid=""
 				echo "$box $(date +%s) $silent" > "$MARK"
 				logger -t podkop-engine "sing-box (pid $box) has not answered DNS on $PROBE_SERVER for $silent s; killing it so that procd starts it again"
 				kill -KILL "$box" 2>/dev/null
@@ -191,6 +290,12 @@ while read -r event; do
 			loop_oom=1; oom_last=1
 		fi
 		logger -t podkop-engine "sing-box exited unexpectedly$why, procd restarts it; $(memory_state)"
+		;;
+	*'"instance.start"'*'"service":"sing-box"'*)
+		# A kill that procd did not report as a crash (it was stopping or restarting that
+		# instance itself) must not explain an exit of the process started now: a crash is
+		# reported before the start that follows it.
+		rm -f "$MARK"
 		;;
 	*'"instance.fail"'*'"service":"sing-box"'*)
 		oom_last=""

@@ -9,7 +9,9 @@ USE_PROCD=1
 START=95
 
 start_service() {
-	[ "$(uci -q get sing-box.main.failsafe)" = 0 ] && return 0
+	case "$(uci -q get sing-box.main.failsafe)" in
+	0 | off | false | no | disabled) return 0 ;;
+	esac
 	procd_open_instance failsafe
 	procd_set_param command /usr/libexec/podkop-engine/failsafe
 	procd_set_param stderr 1

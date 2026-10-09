@@ -59,14 +59,6 @@ start_service() {
 	config_get_bool download_check "main" "urltest_download_check" "1"
 	config_get download_url "main" "urltest_download_url" "https://speed.cloudflare.com/__down?bytes=65536"
 	[ "$download_check" -eq 1 ] && [ -n "$download_url" ] && env="$env SING_BOX_URLTEST_DOWNLOAD_URL=$download_url"
-	# when a server does not answer the TLS ClientHello sent with the uTLS fingerprint of
-	# the configuration, the connection is tried with the next one of this list; sing-box
-	# warns of a name it does not know and goes without the fallback
-	local utls_fallback utls_fallback_order
-	config_get_bool utls_fallback "main" "utls_fallback" "1"
-	config_get utls_fallback_order "main" "utls_fallback_order" "safari,randomized,firefox,chrome"
-	utls_fallback_order=$(echo "$utls_fallback_order" | tr -d ' \t')
-	[ "$utls_fallback" -eq 1 ] && [ -n "$utls_fallback_order" ] && env="$env SING_BOX_UTLS_FALLBACK=$utls_fallback_order"
 	# sing-box keeps the Go memory limit at the memory the system can still give; a size
 	# here (such as 64MiB) replaces it, off removes it. Go stops at start on a malformed
 	# GOMEMLIMIT, so a value it would not take is left out

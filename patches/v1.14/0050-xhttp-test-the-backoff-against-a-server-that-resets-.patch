@@ -1,7 +1,7 @@
 From f2a1aa8bfb8324eb55b5f1614d5e1b2af40034fc Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Mon, 5 Oct 2026 12:23:53 +0300
-Subject: [PATCH 050/106] xhttp: test the backoff against a server that resets
+Subject: [PATCH 050/118] xhttp: test the backoff against a server that resets
  every upload
 
 ---

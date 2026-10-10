@@ -1,4 +1,30 @@
 #!/bin/sh
+# podkop-engine: apk (OpenWrt 25.12 and later) does not overwrite a file under /etc that
+# was edited in place or that no package owns: it keeps that file and installs the
+# package's one beside it as .apk-new. So an /etc/init.d/sing-box left by an engine put
+# in by hand (the podkop installer registers such an engine as a virtual package, which
+# owns no file), or an edited one of the feed sing-box or of another engine package, stays
+# in place, and sing-box runs without what only this package's init script sets up: the
+# DNS fallback, the download check of urltest, the descriptor limit. Put the package's
+# script in place, the old one aside in /etc/sing-box (not in /etc/init.d, where it would
+# show as a service); a script that could not be replaced stays where it was. This runs
+# before default_postinst enables and starts the services of the package.
+for service in sing-box podkop-engine; do
+	[ -f /etc/init.d/$service.apk-new ] || continue
+	mkdir -p /etc/sing-box
+	old=/etc/sing-box/$service.init.before-podkop-engine kept=""
+	if [ -f /etc/init.d/$service ] && mv -f /etc/init.d/$service $old 2>/dev/null; then
+		chmod 0644 $old
+		kept=", the old one is $old"
+	fi
+	if mv -f /etc/init.d/$service.apk-new /etc/init.d/$service 2>/dev/null; then
+		logger -t podkop-engine "/etc/init.d/$service was not the one of the package (edited, or left by another install) and apk kept it: replaced$kept"
+	else
+		[ -z "$kept" ] || mv -f $old /etc/init.d/$service
+		logger -t podkop-engine "/etc/init.d/$service is not the one of the package and could not be replaced by /etc/init.d/$service.apk-new"
+	fi
+done
+
 # podkop-engine: /etc/config/sing-box keeps its contents on upgrade (podkop edits it), so
 # the switches added since are missing after an upgrade from older releases: the DNS
 # fallback (r4), the download test before a urltest switch (r8), the liveness probe

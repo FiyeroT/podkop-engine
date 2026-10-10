@@ -4,7 +4,7 @@
 что пакет `sing-box` из OpenWrt, поэтому с ним он конфликтует и заменяет его.
 Файл брать из релиза нужной версии (https://github.com/FiyeroT/podkop-engine/releases) под свою
 архитектуру (`opkg print-architecture` / `apk --print-arch`), например
-`podkop-engine_1.14.2-r13_openwrt_aarch64_cortex-a53.ipk`.
+`podkop-engine_1.14.2-r14_openwrt_aarch64_cortex-a53.ipk`.
 
 С r9 (1.13, 1.14) пакетов два, ставится один: `podkop-engine` — протоколы, которые использует
 podkop, и TUIC; `podkop-engine-full` — плюс все остальные выходы для «Outbound Config» (http,
@@ -38,6 +38,23 @@ apk заменяет установленный `sing-box` сам (одной т
 При установке из файла apk закрепляет в `/etc/apk/world` именно этот пакет, и `apk upgrade`
 не возвращает фидовый sing-box, даже если тот новее.
 
+Файл в `/etc`, изменённый на месте или не принадлежащий ни одному пакету, apk не
+перезаписывает: оставляет его и кладёт файл пакета рядом с суффиксом `.apk-new`. Так
+остаётся чужой `/etc/init.d/sing-box` — после движка, поставленного руками (установщик
+`bootstrap.sh` с зеркала podkop записывает такой движок виртуальным пакетом без файлов), или
+правленый скрипт фидового sing-box либо другого пакета движка. С ним sing-box работает без
+того, что задаёт только скрипт пакета: без резервного DNS, проверки загрузкой urltest и
+лимита дескрипторов 65536; перезапуск при падении и остановка — как их настроил чужой скрипт.
+С r14 пакет при установке сам ставит свой скрипт на место, прежний сохраняет в
+`/etc/sing-box/sing-box.init.before-podkop-engine` и пишет об этом строку в системный журнал.
+На r13 и старше, если есть `/etc/init.d/sing-box.apk-new`:
+
+```sh
+mv /etc/init.d/sing-box /etc/sing-box/sing-box.init.before-podkop-engine
+mv /etc/init.d/sing-box.apk-new /etc/init.d/sing-box
+service podkop restart
+```
+
 ## Переход между podkop-engine и podkop-engine-full
 
 ```sh
@@ -67,5 +84,5 @@ apk add sing-box '!podkop-engine'
 ## Проверка
 
 ```sh
-sing-box version     # sing-box version 1.14.2-pdk-r13 ... Tags: with_quic,with_utls,with_clash_api,podkop_slim,...
+sing-box version     # sing-box version 1.14.2-pdk-r14 ... Tags: with_quic,with_utls,with_clash_api,podkop_slim,...
 ```

@@ -1,7 +1,7 @@
 From eac42b80f3f4ddc1a992a5d39296b59871e8f407 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Mon, 5 Oct 2026 11:12:45 +0300
-Subject: [PATCH 046/118] xhttp: add the client of Xray's XHTTP transport
+Subject: [PATCH 046/125] xhttp: add the client of Xray's XHTTP transport
 
 Client only, after Xray-core v26.9.9 transport/internet/splithttp: modes
 packet-up, stream-up and stream-one (auto as Xray: REALITY picks

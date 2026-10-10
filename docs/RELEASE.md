@@ -26,6 +26,15 @@
    `src/tools/clang/scripts/update.py` naiveproxy той же версии cronet.
    Новая ветка (например 1.15): каталог `patches/v1.15`, строка в `LINES`.
 
+   **Форки библиотек.** sing-vmess и sing-quic берутся из форков
+   [FiyeroT/sing-vmess](https://github.com/FiyeroT/sing-vmess) и
+   [FiyeroT/sing-quic](https://github.com/FiyeroT/sing-quic): директивы `replace` в `go.mod`,
+   патчи `go.mod: …`. Исправление в библиотеке — это коммит в ветке форка (`pdk-1.13`,
+   `pdk-1.14`), новый тег (sing-vmess: `v0.2.8-pdk13.N` и `v0.2.8-pdk.N`, sing-quic:
+   `v0.6.5-pdk13.N` и `v0.7.1-pdk.N`) и новые строки
+   `go.mod` и `go.sum` в sing-box. Тег должен быть опубликован до сборки: SDK берёт модули
+   через прокси Go.
+
 2. **versions.env**: `SB_<ветка>_VERSION`, `SB_<ветка>_HASH`
    (`curl -sL https://codeload.github.com/SagerNet/sing-box/tar.gz/v<версия> | sha256sum`),
    `SB_<ветка>_RELEASE=1` для новой версии upstream или +1, если менялись только патчи.

@@ -1,7 +1,7 @@
-From 9fb93c68ac2e642b85b9039949602862668729d3 Mon Sep 17 00:00:00 2001
+From 318aba5f61af4fa623f4fec5030e90ff68d4d2b9 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
-Date: Fri, 9 Oct 2026 12:55:09 +0300
-Subject: [PATCH 109/118] tlsfragment: do not hold the socket while waiting for
+Date: Fri, 9 Oct 2026 16:15:03 +0300
+Subject: [PATCH 109/125] tlsfragment: do not hold the socket while waiting for
  an acknowledgment
 
 After a piece of the ClientHello the writer waits until the peer has

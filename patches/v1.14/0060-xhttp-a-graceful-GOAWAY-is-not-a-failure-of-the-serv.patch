@@ -1,7 +1,7 @@
 From 7170d67070be3f999e6d4070a1f293e12a120d58 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Mon, 5 Oct 2026 22:40:48 +0300
-Subject: [PATCH 060/118] xhttp: a graceful GOAWAY is not a failure of the
+Subject: [PATCH 060/125] xhttp: a graceful GOAWAY is not a failure of the
  server
 
 A proxy that closes a connection after so many requests (nginx

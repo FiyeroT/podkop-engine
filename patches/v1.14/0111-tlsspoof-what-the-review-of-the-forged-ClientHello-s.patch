@@ -1,7 +1,7 @@
-From 27bca8879091ff4997b567f672827aac3cb70fbf Mon Sep 17 00:00:00 2001
+From e6b9324ee5bd727239cd77cc47f9084d48aa547f Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
-Date: Fri, 9 Oct 2026 12:55:10 +0300
-Subject: [PATCH 111/118] tlsspoof: what the review of the forged ClientHello
+Date: Fri, 9 Oct 2026 16:15:04 +0300
+Subject: [PATCH 111/125] tlsspoof: what the review of the forged ClientHello
  showed
 
 - The injection and Close are serialized: a connection closed while its

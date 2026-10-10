@@ -1,7 +1,7 @@
-From 60d28c967c89616462a1b1b57633e9c4b0e616b0 Mon Sep 17 00:00:00 2001
+From c2732463e32bb3ade9f7cc0b5eb09c9d24815261 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
-Date: Fri, 9 Oct 2026 12:55:10 +0300
-Subject: [PATCH 116/118] decode-link: what the stand against real servers and
+Date: Fri, 9 Oct 2026 16:15:04 +0300
+Subject: [PATCH 116/125] decode-link: what the stand against real servers and
  two reviews showed
 
 The stand fetches a file through every outbound made of a link: servers

@@ -55,6 +55,9 @@ mv /etc/init.d/sing-box.apk-new /etc/init.d/sing-box
 service podkop restart
 ```
 
+Именно `mv`, а не `cp`: файл `.apk-new`, оставшийся рядом со скриптом, при следующем
+обновлении пакет примет за новый скрипт и поставит его на место уже обновлённого.
+
 ## Переход между podkop-engine и podkop-engine-full
 
 ```sh

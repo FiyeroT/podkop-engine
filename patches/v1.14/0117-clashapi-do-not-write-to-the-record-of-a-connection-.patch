@@ -1,7 +1,7 @@
-From 9278379026e1b1f0d11a2015cf1fe5d11cc28946 Mon Sep 17 00:00:00 2001
+From 01aed58d00bf8c2e87bb9392da2cc4acbb79da32 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
-Date: Fri, 9 Oct 2026 12:55:10 +0300
-Subject: [PATCH 117/118] clashapi: do not write to the record of a connection
+Date: Fri, 9 Oct 2026 16:15:04 +0300
+Subject: [PATCH 117/125] clashapi: do not write to the record of a connection
  while it is listed
 
 When a tracked connection closes, the traffic manager wrote the closing

@@ -1,7 +1,7 @@
 From 880f4c3fa75a71759d59591eed1d9cd619df0c58 Mon Sep 17 00:00:00 2001
 From: FiyeroT <me@fiyero.xyz>
 Date: Tue, 6 Oct 2026 00:58:37 +0300
-Subject: [PATCH 061/118] xhttp: HTTP/3 takes another connection when one is
+Subject: [PATCH 061/125] xhttp: HTTP/3 takes another connection when one is
  out of streams
 
 A server allows so many open streams to a QUIC connection, 100 with quic-go's

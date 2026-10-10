@@ -102,6 +102,60 @@ case "$v" in
     sh -n /usr/libexec/podkop-engine/failsafe || fail "failsafe script"
     echo "r13: links of every kind, option paths, switches OK"
   fi
+  # r14: a VLESS link with the encryption of Xray becomes an outbound that passes check; the
+  # init script passes on only a memory limit and a download address that are safe to pass
+  # (lines 1.13.21 and 1.14.2 have these from revision 14, a later sing-box from its first)
+  r14=1
+  case "$v" in *" 1.13.21-pdk-r"*|*" 1.14.2-pdk-r"*) [ "${v##*-pdk-r}" -ge 14 ] || r14=0 ;; esac
+  if [ "$r14" = 1 ]; then
+    E='vless://6f1c9a0e-3b52-4c1e-9a55-2d4a1b0f7c11@203.0.113.20:443?encryption=mlkem768x25519plus.native.0rtt.AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA&flow=xtls-rprx-vision&type=xhttp&security=tls&sni=e.example.com&path=%2Fx&mode=auto#e'
+    o=$(echo "$E" | sing-box tools decode-link --compact 2>/tmp/pk/enc.err) || { cat /tmp/pk/enc.err; fail "decode-link: VLESS Encryption"; }
+    printf '{"outbounds": [%s]}\n' "$o" > /tmp/pk/enc.json
+    jq -e '.outbounds[0].encryption | startswith("mlkem768x25519plus.native.0rtt.")' /tmp/pk/enc.json >/dev/null || fail "decode-link: no encryption in the outbound"
+    sing-box check -c /tmp/pk/enc.json || fail "the outbound with VLESS Encryption does not pass check"
+    s=0; echo "$E" | sed 's/\.0rtt\./.2rtt./' | sing-box tools decode-link --compact >/tmp/pk/bad.out 2>/tmp/pk/bad.err || s=$?
+    [ "$s" = 2 ] && [ ! -s /tmp/pk/bad.out ] && grep -q '^error: ' /tmp/pk/bad.err || fail "decode-link: bad encryption, status $s"
+    # what start_service of the init script would give sing-box as its environment
+    initenv() {
+      ( set +eu
+        . /lib/functions.sh
+        procd_open_instance() { :; }; procd_close_instance() { :; }
+        procd_set_param() { if [ "$1" = env ]; then shift; printf '%s\n' "$@"; fi; }
+        logger() { echo "log: $*" >&2; }
+        initscript=/etc/init.d/sing-box; . /etc/init.d/sing-box; start_service ) 2>/tmp/pk/init.log
+    }
+    enabled=$(uci -q get sing-box.main.enabled || echo 0)
+    uci set sing-box.main.enabled=1
+    for m in 64MiB 1GiB off; do
+      uci set sing-box.main.memory_limit="$m"; uci commit sing-box
+      initenv | grep -qx "GOMEMLIMIT=$m" || fail "memory_limit $m is not passed on"
+    done
+    for m in 64 0 0MiB 1B 65536KiB 1TiB 64mib ' 64MiB' 99999999999999999999GiB "junk here
+64MiB"; do
+      uci set sing-box.main.memory_limit="$m"; uci commit sing-box
+      initenv > /tmp/pk/init.env; ! grep -q '^GOMEMLIMIT' /tmp/pk/init.env || fail "memory_limit '$m' is passed on"
+      grep -q "log: .*memory_limit '$(printf '%s' "$m" | head -1)" /tmp/pk/init.log && grep -q "ignored: use off" /tmp/pk/init.log || fail "memory_limit '$m': no line in the log"
+    done
+    uci -q delete sing-box.main.memory_limit
+    for u in 'https://example.com/a b' 'ftp://example.com/f' 'example.com/f' 'https://' "x y
+https://example.com/f"; do
+      uci set sing-box.main.urltest_download_url="$u"; uci commit sing-box
+      initenv > /tmp/pk/init.env; ! grep -q 'SING_BOX_URLTEST_DOWNLOAD_URL\|^b$\|^y$' /tmp/pk/init.env || fail "urltest_download_url '$u' is passed on"
+      grep -q "log: .*urltest_download_url '$(printf '%s' "$u" | head -1)" /tmp/pk/init.log && grep -q "ignored, no download check" /tmp/pk/init.log || fail "urltest_download_url '$u': no line in the log"
+    done
+    for u in 'http://example.com/f?bytes=65536' 'HTTPS://Example.com/f%20g'; do
+      uci set sing-box.main.urltest_download_url="$u"; uci commit sing-box
+      initenv | grep -qx "SING_BOX_URLTEST_DOWNLOAD_URL=$u" || fail "the download address $u is not passed on"
+    done
+    uci -q delete sing-box.main.urltest_download_url; uci set sing-box.main.enabled=0; uci commit sing-box
+    initenv | grep -q . && fail "a disabled service gets an environment"
+    uci set sing-box.main.enabled=1; uci commit sing-box
+    initenv > /tmp/pk/init.env
+    grep -qx 'SING_BOX_URLTEST_DOWNLOAD_URL=https://speed.cloudflare.com/__down?bytes=65536' /tmp/pk/init.env || fail "the default download address is not passed on"
+    grep -qx 'SING_BOX_DNS_FALLBACK=ubus' /tmp/pk/init.env || fail "no DNS fallback in the environment with podkop installed"
+    uci set sing-box.main.enabled="$enabled"; uci commit sing-box
+    echo "r14: VLESS Encryption link, init script environment OK"
+  fi
   ;;
 esac
 

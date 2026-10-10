@@ -58,21 +58,32 @@ start_service() {
 	local download_check download_url
 	config_get_bool download_check "main" "urltest_download_check" "1"
 	config_get download_url "main" "urltest_download_url" "https://speed.cloudflare.com/__down?bytes=65536"
-	[ "$download_check" -eq 1 ] && [ -n "$download_url" ] && env="$env SING_BOX_URLTEST_DOWNLOAD_URL=$download_url"
+	if [ "$download_check" -eq 1 ] && [ -n "$download_url" ]; then
+		# the variables reach procd as one string cut at spaces: an address with a space
+		# in it would be cut there, and the download would go to what is left of it
+		# (grep looks at lines: a line break becomes a space first, and so a mismatch)
+		if printf '%s' "$download_url" | tr '\n' ' ' | grep -qiE '^https?://[^[:space:]]+$'; then
+			env="$env SING_BOX_URLTEST_DOWNLOAD_URL=$download_url"
+		else
+			logger -t sing-box "urltest_download_url '$download_url' ignored, no download check: use an http:// or https:// address without spaces"
+		fi
+	fi
 	# sing-box keeps the Go memory limit at the memory the system can still give; a size
 	# here (such as 64MiB) replaces it, off removes it. Go stops at start on a malformed
-	# GOMEMLIMIT, so a value it would not take is left out
+	# GOMEMLIMIT, so a value it would not take is left out (seven digits at most: a size
+	# past what Go can count is malformed to it); so is a number without a unit, which Go
+	# reads as bytes, and zero: with such a limit the collector never rests
 	local memory_limit
 	config_get memory_limit "main" "memory_limit"
 	if [ -n "$memory_limit" ]; then
-		if echo "$memory_limit" | grep -qE '^(off|[0-9]+(B|KiB|MiB|GiB|TiB)?)$'; then
+		if printf '%s' "$memory_limit" | tr '\n' ' ' | grep -qE '^(off|[1-9][0-9]{0,6}(MiB|GiB))$'; then
 			env="$env GOMEMLIMIT=$memory_limit"
 		else
-			logger -t sing-box "memory_limit '$memory_limit' ignored: use off or a size such as 64MiB"
+			logger -t sing-box "memory_limit '$memory_limit' ignored: use off or a size in MiB or GiB, such as 64MiB"
 		fi
 	fi
 	if [ -n "$env" ]; then
-		set -f # no pathname expansion of the URL
+		set -f # no pathname expansion of the URL; no value has a space in it (checked above)
 		procd_set_param env $env
 		set +f
 	fi
